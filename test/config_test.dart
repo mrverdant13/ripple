@@ -134,6 +134,25 @@ scripts:
       );
     });
 
+    test('rejects non-map script entry', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad: just-a-string
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('bad'), contains('must be a map')),
+          ),
+        ),
+      );
+    });
+
     test('rejects malformed YAML', () {
       expect(
         () => parseRippleYaml('packages: [\n', rootPath: '/r'),
