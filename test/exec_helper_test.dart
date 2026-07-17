@@ -119,6 +119,32 @@ void main() {
       expect(result.stdout.trim(), 'ui');
     });
 
+    test('can omit parent environment variables', () async {
+      final path = Platform.environment['PATH'];
+      expect(path, isNotNull);
+
+      final result = await runProcess(
+        [
+          'sh',
+          '-c',
+          'if printenv RIPPLE_PACKAGE_NAME >/dev/null 2>&1; then exit 11; fi; '
+              'printenv RIPPLE_ROOT_PATH',
+        ],
+        workingDirectory: Directory.current.path,
+        environment: {
+          'PATH': path!,
+          rippleRootPathEnvVar: '/repo',
+          // Present in this map would be visible; omitting it proves parent
+          // values are not inherited when includeParentEnvironment is false.
+        },
+        inheritStdio: false,
+        includeParentEnvironment: false,
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr);
+      expect(result.stdout.trim(), '/repo');
+    });
+
     test('propagates non-zero exit codes', () async {
       final result = await runProcess(
         ['sh', '-c', 'exit 7'],

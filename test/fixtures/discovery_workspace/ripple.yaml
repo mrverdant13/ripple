@@ -16,3 +16,24 @@ packages:
       - packages/*
     tooling:
       - tool
+
+scripts:
+  root.pwd:
+    run: pwd
+  root.env:
+    run: sh -c 'printenv RIPPLE_ROOT_PATH; if printenv RIPPLE_PACKAGE_PATH >/dev/null 2>&1 || printenv RIPPLE_PACKAGE_NAME >/dev/null 2>&1; then exit 11; fi'
+  root.subst:
+    run: printf %s $RIPPLE_ROOT_PATH
+  pkg.name:
+    exec: printenv RIPPLE_PACKAGE_NAME
+  pkg.env:
+    exec: sh -c 'printf "%s\n%s\n%s\n" "$RIPPLE_ROOT_PATH" "$RIPPLE_PACKAGE_PATH" "$RIPPLE_PACKAGE_NAME"'
+  pkg.subst:
+    exec: printf %s $RIPPLE_PACKAGE_NAME
+  pkg.fail:
+    exec: sh -c 'printf "%s\n" "$RIPPLE_PACKAGE_NAME"; if [ "$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi'
+  pkg.filtered:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    filters:
+      dirExists:
+        - test
