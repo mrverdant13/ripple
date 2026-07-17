@@ -49,7 +49,12 @@ String _substituteArg(String arg, Map<String, String> vars) {
   for (final entry in vars.entries) {
     final name = entry.key;
     final value = entry.value;
-    result = result.replaceAll('\${$name}', value).replaceAll('\$$name', value);
+    // Exact `${VAR}` match, then `$VAR` only when not a longer identifier prefix.
+    result = result.replaceAll('\${$name}', value);
+    result = result.replaceAllMapped(
+      RegExp('\\\$${RegExp.escape(name)}(?![A-Za-z0-9_])'),
+      (_) => value,
+    );
   }
   return result;
 }

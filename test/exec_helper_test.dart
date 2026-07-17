@@ -65,6 +65,26 @@ void main() {
         [r'$UNKNOWN', 'plain'],
       );
     });
+
+    test('does not treat \$VAR as a prefix of a longer token', () {
+      expect(
+        substituteRippleVars(
+          [
+            r'$RIPPLE_ROOT_PATH_SUFFIX',
+            r'pre_$RIPPLE_ROOT_PATH_x',
+            r'$RIPPLE_ROOT_PATH',
+            r'${RIPPLE_ROOT_PATH}_ok',
+          ],
+          vars: vars,
+        ),
+        [
+          r'$RIPPLE_ROOT_PATH_SUFFIX',
+          r'pre_$RIPPLE_ROOT_PATH_x',
+          '/repo',
+          '/repo_ok',
+        ],
+      );
+    });
   });
 
   group('runProcess', () {
