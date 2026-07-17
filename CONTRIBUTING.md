@@ -25,11 +25,17 @@ This repository is a **single Dart package** at the repo root (`name: ripple_cli
 Dependencies resolve with a normal `dart pub get` — no workspace linking or
 `pubspec_overrides` generation.
 
+This repo is also a **Ripple consumer**: root `ripple.yaml` drives local and CI
+checks via the same `list` / `exec` / `run` surface consumers use. Prefer
+`ripple run …` (or `dart run bin/ripple.dart run …` while iterating on the CLI)
+over ad-hoc one-off commands once scripts are defined.
+
 ### Repository layout
 
 ```
 ripple/                         # repo root = package root
 ├── pubspec.yaml                # name: ripple_cli
+├── ripple.yaml                 # Repo management scripts (dogfood Ripple)
 ├── bin/
 │   └── ripple.dart             # CLI entrypoint (`ripple`)
 ├── lib/
@@ -57,7 +63,7 @@ paths or assume another tool's config format.
 
 ### Running the CLI during development
 
-From the repo root:
+From the repo root (exercises local sources without a global install):
 
 ```bash
 dart run bin/ripple.dart
@@ -66,10 +72,27 @@ dart run bin/ripple.dart exec -- dart analyze .
 dart run bin/ripple.dart run <script>
 ```
 
-Use `dart run` against the local package so changes are exercised without relying
-on a globally activated `ripple` binary.
+Optional — install the local package globally while developing:
+
+```bash
+dart install 'ripple_cli@{path: .}'
+ripple run <script>
+```
+
+Use `dart run bin/ripple.dart` when validating unreleased CLI changes. Use a
+path or git install when you want the `ripple` executable on your `PATH`.
 
 ### Common local checks
+
+Once `ripple.yaml` scripts exist, prefer:
+
+```bash
+dart run bin/ripple.dart run format.ci
+dart run bin/ripple.dart run analyze.ci
+dart run bin/ripple.dart run test.ci
+```
+
+Equivalent direct Dart commands (useful before scripts land, or for debugging):
 
 ```bash
 dart format --set-exit-if-changed .
@@ -77,16 +100,22 @@ dart analyze --fatal-infos --fatal-warnings .
 dart test
 ```
 
-Once CI workflows land, prefer the same checks CI runs (format / analyze / test).
+Once CI workflows land, prefer the same Ripple scripts CI runs.
 
 ### Install from git (consumers)
 
-Ripple is distributed as a **git-consumable** package first (pub.dev optional later):
+Ripple is distributed as a **git-consumable** package first (pub.dev optional later).
+Install or upgrade the CLI globally with [`dart install`](https://dart.dev/tools/dart-tool)
+([package descriptors](https://dart.dev/to/package-descriptors)):
 
 ```bash
-dart pub global activate \
-  --source git https://github.com/mrverdant13/ripple.git \
-  --git-ref <tag-or-sha>
+dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: <tag-or-sha>}}'
+```
+
+Re-run the same command to upgrade. For a local checkout:
+
+```bash
+dart install 'ripple_cli@{path: /path/to/ripple}'
 ```
 
 Consumers discover packages via a root `ripple.yaml` (include/exclude globs;
@@ -108,7 +137,7 @@ Prioritize coverage for:
 
 - Glob include/exclude and package discovery
 - Filter combos (`dirExists`, `fileExists`, `dependsOn`, `group`, `--packages` / `RIPPLE_PACKAGES`)
-- Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` on `run:`)
+- Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` on a `run:` script)
 - Fail-fast on ad-hoc `exec` and `exec:` scripts
 - Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
 
@@ -121,12 +150,8 @@ This repository uses [Conventional Commits](https://www.conventionalcommits.org/
 ### Format
 
 - Setup/infra work (no scope): `<type>: <description>`
-- Scoped work (one area): `<type>(<scope>): <description>`
-- Scoped work (multiple areas): `<type>(<scope1>,<scope2>): <description>`
-
-Use a **single scope** when the change is confined to one area. Use **multiple
-comma-separated scopes** (no spaces) when a PR or commit intentionally spans more
-than one.
+- Package work: `<type>(ripple_cli): <description>`
+- Multi-package work (when additional packages exist): `<type>(<scope1>,<scope2>): <description>`
 
 PR titles follow the same format as commit messages.
 
@@ -144,47 +169,34 @@ PR titles follow the same format as commit messages.
 
 ### Scopes
 
-Use scopes for changes tied to a specific area of the package:
+Scopes name **packages** (not internal modules), so the convention stays valid if
+more packages are added later.
 
 | Scope | Area |
 | --- | --- |
-| `config` | `ripple.yaml` parsing and validation |
-| `discovery` | Include/exclude globs and package discovery |
-| `filters` | `dirExists` / `fileExists` / `dependsOn` / `group` / package scope |
-| `exec` | Ad-hoc and scripted command execution |
-| `scripts` | Named `run:` / `exec:` scripts |
-| `cli` | Command runner and `list` / `exec` / `run` commands |
+| `ripple_cli` | This package (repo root today) |
 
-For cross-cutting setup or CI-only changes, omit the scope: `chore: …`, `ci: …`,
+Use `ripple_cli` for changes to the package. For cross-cutting setup or CI-only
+changes that are not package-specific, omit the scope: `chore: …`, `ci: …`,
 `docs: …`.
 
-### Multiple scopes
-
-When a change touches more than one scoped area, list every affected scope in
-parentheses, separated by commas:
+When a future change spans more than one package, list every affected package
+scope in parentheses, separated by commas (no spaces):
 
 ```
-feat(discovery,filters): intersect group selection with package filters
-fix(exec,scripts): honor fail-fast for named exec scripts
+feat(ripple_cli,other_pkg): wire shared helper through CLI
 ```
-
-Guidelines:
-
-- Include only scopes that are **meaningfully changed**.
-- Prefer **one scope** when one area owns the change.
-- The **PR title** should use the same scoped format as the primary commit when
-  the PR spans multiple areas.
 
 ### Examples
 
 ```
 chore: scaffold ripple_cli package and bin entrypoint
 ci: add format analyze and test workflow
-feat(config): parse ripple.yaml packages and scripts
-feat(discovery): resolve include/exclude globs to pubspec packages
-feat(cli): add list exec and run commands
-fix(filters): treat RIPPLE_PACKAGES as an intersection with CLI flags
-test(discovery): cover fixture decoys under exclude globs
+feat(ripple_cli): parse ripple.yaml packages and scripts
+feat(ripple_cli): resolve include/exclude globs to pubspec packages
+feat(ripple_cli): add list exec and run commands
+fix(ripple_cli): treat RIPPLE_PACKAGES as an intersection with CLI flags
+test(ripple_cli): cover fixture decoys under exclude globs
 docs: add README and CONTRIBUTING
 ```
 
@@ -192,8 +204,8 @@ docs: add README and CONTRIBUTING
 
 ## Releases
 
-v1 distribution is **git tags** for consumers to pin with `--git-ref`. Automated
-pub.dev publishing is out of scope until the package is ready for it.
+v1 distribution is **git tags** for consumers to pin with `dart install` `ref`.
+Automated pub.dev publishing is out of scope until the package is ready for it.
 
 ### Tag format
 
@@ -201,7 +213,7 @@ pub.dev publishing is out of scope until the package is ready for it.
 ripple_cli/<version>
 ```
 
-- **`ripple_cli`** — package name (matches `pubspec.yaml` `name:`).
+- **`ripple_cli`** — package name (matches `pubspec.yaml` `name:` and commit scope).
 - **`<version>`** — exact version string from `pubspec.yaml`. No `v` prefix.
 
 Examples:
@@ -217,6 +229,8 @@ ripple_cli/0.1.0
 - The tag version must match `pubspec.yaml` exactly.
 - Create an **annotated** tag with a short message naming the package and version.
 - Prefer tagging from `main` after the release commit is merged.
+- **One package per release tag** — when additional packages exist, tag each
+  package independently as `<scope>/<version>`.
 
 ### Manual tag (until release automation lands)
 
@@ -255,9 +269,9 @@ git tag -l 'ripple_cli/*'
 
 - [ ] Behavior matches documented CLI and config contracts (or documents intentional deviation)
 - [ ] Tests added or updated (fixtures when discovery/filters/scripts change)
-- [ ] Formatting verified (`dart format --set-exit-if-changed .`)
-- [ ] Analysis verified (`dart analyze --fatal-infos --fatal-warnings .`)
-- [ ] Tests verified (`dart test`)
+- [ ] Formatting verified (`dart run bin/ripple.dart run format.ci` or `dart format --set-exit-if-changed .`)
+- [ ] Analysis verified (`dart run bin/ripple.dart run analyze.ci` or `dart analyze --fatal-infos --fatal-warnings .`)
+- [ ] Tests verified (`dart run bin/ripple.dart run test.ci` or `dart test`)
 - [ ] No consumer-specific hard-coding in the package
 - [ ] Public CLI/config changes reflected in `README.md` when user-facing
 
