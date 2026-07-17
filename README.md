@@ -17,17 +17,17 @@ executable globally with [`dart install`](https://dart.dev/tools/dart-install)
 using a [package descriptor](https://dart.dev/to/package-descriptors):
 
 ```bash
-dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: ripple_cli/0.0.1-dev.1}}'
+dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: ripple_cli/<version>}}'
 ```
 
 The `ref` must be a git tag (or commit SHA). Release tags follow
-`ripple_cli/<version>`, where `<version>` matches `pubspec.yaml` exactly
-(currently `0.0.1-dev.1` → tag `ripple_cli/0.0.1-dev.1`).
+`ripple_cli/<version>`, where `<version>` is the exact string from
+`pubspec.yaml` (no `v` prefix).
 
 Equivalent URL form:
 
 ```bash
-dart install https://github.com/mrverdant13/ripple.git --git-ref ripple_cli/0.0.1-dev.1
+dart install https://github.com/mrverdant13/ripple.git --git-ref ripple_cli/<version>
 ```
 
 Re-run the same command to upgrade. For a local checkout:
@@ -40,7 +40,7 @@ Confirm the install:
 
 ```bash
 ripple --version
-# ripple_cli 0.0.1-dev.1
+# ripple_cli <version>
 ```
 
 ## Quick start
