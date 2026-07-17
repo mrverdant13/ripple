@@ -62,12 +62,16 @@ class ScriptFilters {
 ///
 /// Exactly one of `run:` or `exec:` is allowed per script (XOR). A `run:`
 /// script must not declare `filters`.
+///
+/// [commands] is one or more argv command strings run sequentially (fail-fast
+/// between steps). A bare string in YAML is normalized to a single-element
+/// list; a YAML list is multiple steps.
 class RippleScript {
   /// Creates a validated script entry.
   const RippleScript({
     required this.name,
     required this.kind,
-    required this.command,
+    required this.commands,
     this.filters,
   }) : assert(
           kind == ScriptKind.exec || filters == null,
@@ -80,8 +84,11 @@ class RippleScript {
   /// Whether this script runs once at the root or once per package.
   final ScriptKind kind;
 
-  /// Shell command string from `run:` or `exec:`.
-  final String command;
+  /// Command strings from `run:` or `exec:` (string or YAML list).
+  ///
+  /// Each entry is split into an executable plus arguments at execution time.
+  /// Steps run in order and stop on the first non-zero exit.
+  final List<String> commands;
 
   /// Optional filters; only valid when [kind] is [ScriptKind.exec].
   final ScriptFilters? filters;
@@ -329,10 +336,8 @@ RippleScript _scriptFromValue(
     );
   }
   final Map<dynamic, dynamic> map = value;
-  final run = _optionalString(map, 'run', 'RippleScript');
-  final exec = _optionalString(map, 'exec', 'RippleScript');
-  final hasRun = run != null;
-  final hasExec = exec != null;
+  final hasRun = map['run'] != null;
+  final hasExec = map['exec'] != null;
 
   if (hasRun == hasExec) {
     throw CheckedFromJsonException(
@@ -353,22 +358,137 @@ RippleScript _scriptFromValue(
     );
   }
 
-  final command = hasRun ? run : exec;
-  if (command == null || command.trim().isEmpty) {
-    throw CheckedFromJsonException(
-      map,
-      hasRun ? 'run' : 'exec',
-      'RippleScript',
-      'Script "$name" command must be a non-empty string',
-    );
-  }
+  final kindKey = hasRun ? 'run' : 'exec';
+  final commands = _commandsFromValue(
+    map[kindKey],
+    map: map,
+    key: kindKey,
+    scriptName: name,
+  );
 
   return RippleScript(
     name: name,
     kind: hasRun ? ScriptKind.run : ScriptKind.exec,
-    command: command,
+    commands: commands,
     filters: hasExec ? _filtersFromValue(filtersValue, map) : null,
   );
+}
+
+/// Parses a `run:` / `exec:` value as a non-empty string or list of strings.
+///
+/// Rejects empty lists, non-string items, blank command strings, and command
+/// strings that contain unquoted `&&` (use a YAML list instead, or `sh -c`
+/// when a real shell is required).
+List<String> _commandsFromValue(
+  Object? value, {
+  required Map<dynamic, dynamic> map,
+  required String key,
+  required String scriptName,
+}) {
+  late final List<String> raw;
+  if (value is String) {
+    raw = [value];
+  } else if (value is List) {
+    if (value.isEmpty) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleScript',
+        'Script "$scriptName" `$key:` must be a non-empty string or list',
+      );
+    }
+    raw = <String>[];
+    for (var i = 0; i < value.length; i++) {
+      final element = value[i];
+      if (element is! String) {
+        throw CheckedFromJsonException(
+          map,
+          key,
+          'RippleScript',
+          'Script "$scriptName" `$key:` must be a string or list of strings '
+              '(index $i)',
+        );
+      }
+      raw.add(element);
+    }
+  } else {
+    throw CheckedFromJsonException(
+      map,
+      key,
+      'RippleScript',
+      'Script "$scriptName" `$key:` must be a string or list of strings',
+    );
+  }
+
+  final commands = <String>[];
+  for (var i = 0; i < raw.length; i++) {
+    final command = raw[i];
+    if (command.trim().isEmpty) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleScript',
+        raw.length == 1
+            ? 'Script "$scriptName" command must be a non-empty string'
+            : 'Script "$scriptName" `$key:` step ${i + 1} must be a non-empty '
+                'string',
+      );
+    }
+    if (_containsUnquotedAnd(command)) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleScript',
+        'Script "$scriptName" command must not contain unquoted `&&`. '
+            'Use a YAML list of steps under `$key:`, or wrap shell compound '
+            "commands in `sh -c '…'`.",
+      );
+    }
+    commands.add(command);
+  }
+
+  return List<String>.unmodifiable(commands);
+}
+
+/// Returns true when [command] contains `&&` outside of single/double quotes.
+bool _containsUnquotedAnd(String command) {
+  var inSingle = false;
+  var inDouble = false;
+  var escape = false;
+
+  for (var i = 0; i < command.length; i++) {
+    final char = command[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (char == r'\' && !inSingle) {
+      escape = true;
+      continue;
+    }
+
+    if (char == "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+
+    if (char == '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+
+    if (!inSingle &&
+        !inDouble &&
+        char == '&' &&
+        i + 1 < command.length &&
+        command[i + 1] == '&') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 ScriptFilters? _filtersFromValue(

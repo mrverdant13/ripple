@@ -10,12 +10,12 @@ void main() {
         'format.ci': RippleScript(
           name: 'format.ci',
           kind: ScriptKind.run,
-          command: 'dart format .',
+          commands: ['dart format .'],
         ),
         'analyze.ci': RippleScript(
           name: 'analyze.ci',
           kind: ScriptKind.exec,
-          command: 'dart analyze .',
+          commands: ['dart analyze .'],
         ),
       },
     );
@@ -24,7 +24,7 @@ void main() {
       final script = resolveScript(config, 'format.ci');
       expect(script.name, 'format.ci');
       expect(script.kind, ScriptKind.run);
-      expect(script.command, 'dart format .');
+      expect(script.commands, ['dart format .']);
     });
 
     test('lists available scripts when the name is unknown', () {
