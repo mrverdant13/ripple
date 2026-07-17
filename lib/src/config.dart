@@ -1,8 +1,11 @@
 /// Load and validate `ripple.yaml` from a consumer repository.
 library;
 
+import 'dart:io';
+
 import 'package:checked_yaml/checked_yaml.dart';
 import 'package:json_annotation/json_annotation.dart';
+import 'package:path/path.dart' as p;
 
 /// Thrown when `ripple.yaml` cannot be found, read, parsed, or validated.
 class RippleConfigException implements Exception {
@@ -124,6 +127,52 @@ class RippleConfig {
 
   /// Named scripts keyed by script id.
   final Map<String, RippleScript> scripts;
+}
+
+/// File name sought when discovering the Ripple config root.
+const rippleYamlFileName = 'ripple.yaml';
+
+/// Walks upward from [start] until a `ripple.yaml` is found.
+///
+/// Returns the absolute path of that file. Throws [RippleConfigException] if
+/// none exists between [start] and the filesystem root.
+String findRippleYamlPath({Directory? start}) {
+  var dir = (start ?? Directory.current).absolute;
+  while (true) {
+    final candidate = File(p.join(dir.path, rippleYamlFileName));
+    if (candidate.existsSync()) {
+      return candidate.path;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) {
+      throw RippleConfigException(
+        'No $rippleYamlFileName found from ${start?.path ?? Directory.current.path} '
+        'up to the filesystem root.',
+      );
+    }
+    dir = parent;
+  }
+}
+
+/// Loads, parses, and validates the nearest ancestor `ripple.yaml`.
+///
+/// The returned [RippleConfig.rootPath] is the directory containing that file.
+RippleConfig loadRippleConfig({Directory? start}) {
+  final yamlPath = findRippleYamlPath(start: start);
+  final file = File(yamlPath);
+  late final String contents;
+  try {
+    contents = file.readAsStringSync();
+  } on FileSystemException catch (error) {
+    throw RippleConfigException(
+      'Failed to read $yamlPath: ${error.message}',
+    );
+  }
+  return parseRippleYaml(
+    contents,
+    rootPath: p.dirname(yamlPath),
+    sourceUrl: p.toUri(yamlPath),
+  );
 }
 
 /// Parses and validates [yamlContent] as a `ripple.yaml` document.
