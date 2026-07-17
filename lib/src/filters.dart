@@ -183,8 +183,8 @@ List<RipplePackage> filterPackages(
     }
   }
 
-  final groups = groupMembership ??
-      resolvePackageGroups(config, packages: packages);
+  final groups =
+      groupMembership ?? resolvePackageGroups(config, packages: packages);
   final groupMemberPaths = <String>{};
   if (criteria.groups.isNotEmpty) {
     // Start from the first group, then intersect with each additional group.
