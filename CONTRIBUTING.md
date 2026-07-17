@@ -22,8 +22,8 @@ dart pub get
 ```
 
 This repository is a **single Dart package** at the repo root (`name: ripple_cli`).
-There is no Melos workspace and no path-linking — dependencies resolve with a normal
-`dart pub get`.
+Dependencies resolve with a normal `dart pub get` — no workspace linking or
+`pubspec_overrides` generation.
 
 ### Repository layout
 
@@ -52,8 +52,8 @@ ripple/                         # repo root = package root
 ```
 
 **Scope of this package:** Ripple is a **repo-agnostic** runner. Consumer repos
-(e.g. Foundry) provide their own `ripple.yaml`; this package must not hard-code
-consumer-specific paths or Melos compatibility.
+provide their own `ripple.yaml`; this package must not hard-code consumer-specific
+paths or assume another tool's config format.
 
 ### Running the CLI during development
 
@@ -242,11 +242,11 @@ git tag -l 'ripple_cli/*'
 - Include **tests** for any behavior changes (unit, fixture, or CLI as appropriate).
 - Link related issues or milestone items when applicable.
 - Do not commit secrets, `.env` files, or local editor state.
-- Do not add Melos compatibility, workspace linking, or consumer-specific paths.
+- Do not add workspace linking, foreign config importers, or consumer-specific paths.
 
 ### Non-goals (do not expand scope in drive-by PRs)
 
-- Melos / `melos.yaml` import or compatibility layer
+- Importing or emulating another tool's config format
 - Dart workspace / `pubspec_overrides` generation
 - Script `steps` / multi-script composition inside Ripple
 - Versioning, changelog, or publish orchestration beyond git tags (until planned)
@@ -258,7 +258,7 @@ git tag -l 'ripple_cli/*'
 - [ ] Formatting verified (`dart format --set-exit-if-changed .`)
 - [ ] Analysis verified (`dart analyze --fatal-infos --fatal-warnings .`)
 - [ ] Tests verified (`dart test`)
-- [ ] No Foundry- or Melos-specific hard-coding in the package
+- [ ] No consumer-specific hard-coding in the package
 - [ ] Public CLI/config changes reflected in `README.md` when user-facing
 
 ---
