@@ -35,7 +35,7 @@ enum ScriptKind {
 
 /// Filters declared on an `exec:` script.
 ///
-/// Stored as data in this layer; filter application happens separately.
+/// Stored as data here; callers apply these filters when selecting packages.
 class ScriptFilters {
   /// Creates script filters from config.
   const ScriptFilters({
@@ -102,7 +102,7 @@ class RipplePackages {
   /// Glob patterns to subtract from include matches.
   final List<String> exclude;
 
-  /// Named sets of path globs for later group filtering.
+  /// Named sets of path globs for group filtering.
   final Map<String, List<String>> groups;
 }
 

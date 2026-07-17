@@ -182,7 +182,8 @@ scripts:
     run: dart format .
 ''');
       // Decoy deeper file must not win over the nearest ancestor.
-      File(p.join(tempRoot.path, 'ripple.yaml')).writeAsStringSync('name: outer\n');
+      File(p.join(tempRoot.path, 'ripple.yaml'))
+          .writeAsStringSync('name: outer\n');
 
       final yamlPath = findRippleYamlPath(start: nested);
       expect(yamlPath, p.join(root.path, 'ripple.yaml'));
