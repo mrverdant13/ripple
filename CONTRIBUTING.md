@@ -96,6 +96,27 @@ dart run bin/ripple.dart run analyze.ci
 dart run bin/ripple.dart run test.ci
 ```
 
+For a colored local test run with coverage collection (same coverde pipeline as
+`test.ci`):
+
+```bash
+dart run bin/ripple.dart run test
+```
+
+Merge per-run coverage into `coverage/lcov.merged.info` and optionally enforce
+the 100% threshold locally:
+
+```bash
+dart run bin/ripple.dart run coverage.merge
+dart run bin/ripple.dart run coverage.check
+```
+
+`test` / `test.ci` write `coverage/lcov.info` via coverde-optimized tests.
+`coverage.merge` rewrites paths relative to the Ripple root into
+`coverage/lcov.merged.info`. `coverage.check` fails when coverage is below
+100%. CI still runs only `format.ci` / `analyze.ci` / `test.ci` today; wiring
+merge/check into the workflow is a follow-up.
+
 Equivalent direct Dart commands (useful for debugging):
 
 ```bash
@@ -104,7 +125,8 @@ dart analyze --fatal-infos --fatal-warnings .
 dart test
 ```
 
-CI runs these same Ripple scripts on pull requests and pushes to `main`.
+CI runs `format.ci`, `analyze.ci`, and `test.ci` on pull requests and pushes to
+`main`.
 
 ### Install from git (consumers)
 
