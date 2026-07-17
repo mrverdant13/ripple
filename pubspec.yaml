@@ -2,7 +2,7 @@ name: ripple_cli
 description: >
   Repo-agnostic CLI for discovering Dart packages and running commands or
   named scripts across a consumer repository via ripple.yaml.
-version: 0.0.1-dev.1
+version: 0.1.0
 repository: https://github.com/mrverdant13/ripple
 
 environment:
