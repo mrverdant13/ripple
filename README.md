@@ -61,3 +61,32 @@ scripts:
 
 Invalid configs (both `run` and `exec`, neither, `filters` on a `run:` script,
 or malformed YAML) fail with a clear config error.
+
+## Commands
+
+### `ripple list`
+
+Print packages discovered from `packages.include` / `packages.exclude`, after
+optional filters. Output is one relative path per line (relative to the Ripple
+root), sorted for stable review.
+
+```bash
+ripple list
+ripple list --group libs
+ripple list --packages core,ui
+ripple list --dir-exists test
+ripple list --file-exists README.md
+ripple list --depends-on path
+```
+
+| Flag | Description |
+| --- | --- |
+| `--group <name>` | Only packages in that named `packages.groups` entry. |
+| `--packages <a,b>` | Comma-separated package names; intersected with other filters. |
+| `--dir-exists <path>` | Only packages that contain this relative directory (repeatable, AND). |
+| `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
+| `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
+
+`RIPPLE_PACKAGES` (comma-separated names) intersects with `--packages` and every
+other active filter. Running outside any `ripple.yaml` ancestry fails with a
+config-not-found error.
