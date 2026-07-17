@@ -3,11 +3,94 @@
 Repo-agnostic CLI for discovering Dart packages and running commands or named
 scripts across a consumer repository via `ripple.yaml`.
 
-## `ripple.yaml`
+Ripple does **not** manage Dart workspaces, generate `pubspec_overrides`, or
+link packages. Each package stays independent; Ripple only discovers directories
+that contain a `pubspec.yaml` and runs processes in them (or once at the repo
+root for `run:` scripts).
 
-Place a `ripple.yaml` at the root of the consumer repository. Ripple walks
-upward from the current working directory until it finds this file; that file's
-directory is the Ripple root.
+## Install
+
+Requires the [Dart SDK](https://dart.dev/get-dart) (stable 3.5+).
+
+Distribution for v1 is **git tags** (not pub.dev). Install the `ripple`
+executable globally with [`dart install`](https://dart.dev/tools/dart-install)
+using a [package descriptor](https://dart.dev/to/package-descriptors):
+
+```bash
+dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: ripple_cli/0.1.0}}'
+```
+
+The `ref` must be a git tag (or commit SHA). Release tags follow
+`ripple_cli/<version>`, where `<version>` matches `pubspec.yaml` exactly
+(currently `0.1.0` → tag `ripple_cli/0.1.0`).
+
+Equivalent URL form:
+
+```bash
+dart install https://github.com/mrverdant13/ripple.git --git-ref ripple_cli/0.1.0
+```
+
+Re-run the same command to upgrade. For a local checkout:
+
+```bash
+dart install 'ripple_cli@{path: /path/to/ripple}'
+```
+
+Confirm the install:
+
+```bash
+ripple --version
+# ripple_cli 0.1.0
+```
+
+## Quick start
+
+1. **Add a `ripple.yaml`** at the root of your consumer repository:
+
+   ```yaml
+   name: my_repo
+
+   packages:
+     include:
+       - packages/*
+       - tool
+     exclude:
+       - '**/example/**'
+
+   scripts:
+     format:
+       run: dart format --set-exit-if-changed .
+     analyze:
+       exec: dart analyze --fatal-infos --fatal-warnings .
+       filters:
+         dirExists: [lib]
+   ```
+
+2. **List discovered packages** (directories under `include` that contain
+   `pubspec.yaml`, minus `exclude`):
+
+   ```bash
+   ripple list
+   ```
+
+3. **Run an ad-hoc command** once per matching package (pass the command after
+   `--`):
+
+   ```bash
+   ripple exec -- dart test
+   ```
+
+4. **Run a named script** from `ripple.yaml`:
+
+   ```bash
+   ripple run format
+   ripple run analyze
+   ```
+
+Ripple walks upward from the current working directory until it finds
+`ripple.yaml`; that file's directory is the Ripple root.
+
+## `ripple.yaml`
 
 ### Top-level keys
 
@@ -40,7 +123,7 @@ packages:
 
 ### `scripts`
 
-Each script must declare **exactly one** of `run:` or `exec:`:
+Each script must declare **exactly one** of `run:` or `exec:` (XOR):
 
 - **`run:`** — execute once with cwd = the Ripple root. Must not declare
   `filters`.
@@ -61,6 +144,9 @@ scripts:
 
 Invalid configs (both `run` and `exec`, neither, `filters` on a `run:` script,
 or malformed YAML) fail with a clear config error.
+
+There is no `steps` / multi-script composition inside Ripple — compose with the
+shell (`&&`) outside the tool.
 
 ## Commands
 
@@ -141,10 +227,8 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 | `--fail-fast` | For `exec:` scripts, stop after the first package whose command exits non-zero. |
 
 Unknown script names fail with a clear error that lists available scripts.
-Compose multiple checks with the shell (`&&`); Ripple does not support script
-`steps`.
 
-### Environment variables
+## Environment variables
 
 Child processes receive these variables in the environment (and as `$VAR` /
 `${VAR}` substitutions in command arguments):
@@ -157,3 +241,15 @@ Child processes receive these variables in the environment (and as `$VAR` /
 
 `RIPPLE_PACKAGES` (selection filter) is read by Ripple itself; it is not
 injected into child processes beyond normal parent-environment inheritance.
+
+## Non-goals
+
+Ripple intentionally does **not**:
+
+- Create or manage Dart **workspaces**
+- Generate **`pubspec_overrides.yaml`** or otherwise link packages
+- Provide script **`steps`** / multi-script composition (use shell `&&` instead)
+- Discover packages by anything other than `pubspec.yaml` presence under
+  include/exclude globs
+- Publish to pub.dev as the v1 distribution channel (use git tags with
+  `dart install` as above)
