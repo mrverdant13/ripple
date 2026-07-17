@@ -113,16 +113,47 @@ is the first non-zero package exit (or `0` when all succeed).
 
 Missing `--` / an empty command fails with a usage error.
 
+### `ripple run`
+
+Execute a named script from `ripple.yaml`. Script ids may contain dots
+(e.g. `format.ci`).
+
+```bash
+ripple run format.ci
+ripple run analyze.ci --group libs
+ripple run analyze.ci --packages core,ui --fail-fast
+```
+
+Behavior depends on the script kind:
+
+- **`run:`** — runs once with cwd = the Ripple root. Only `RIPPLE_ROOT_PATH` is
+  set. Package filters (`--group`, `--packages`, `--dir-exists`,
+  `--file-exists`, `--depends-on`, and `RIPPLE_PACKAGES`) are rejected.
+- **`exec:`** — runs once per matching package (same sequential / fail-fast
+  model as [`ripple exec`](#ripple-exec)). Script-declared `filters` are
+  intersected with CLI filters and `RIPPLE_PACKAGES`. Package path/name vars
+  are set in addition to `RIPPLE_ROOT_PATH`.
+
+Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
+
+| Flag | Description |
+| --- | --- |
+| `--fail-fast` | For `exec:` scripts, stop after the first package whose command exits non-zero. |
+
+Unknown script names fail with a clear error that lists available scripts.
+Compose multiple checks with the shell (`&&`); Ripple does not support script
+`steps`.
+
 ### Environment variables
 
-Each package invocation receives these variables in the child environment (and
-as `$VAR` / `${VAR}` substitutions in the command arguments):
+Child processes receive these variables in the environment (and as `$VAR` /
+`${VAR}` substitutions in command arguments):
 
 | Variable | Value |
 | --- | --- |
-| `RIPPLE_ROOT_PATH` | Absolute path to the Ripple root (directory containing `ripple.yaml`). |
-| `RIPPLE_PACKAGE_PATH` | Absolute path to the current package directory. |
-| `RIPPLE_PACKAGE_NAME` | Package name from that package's `pubspec.yaml`. |
+| `RIPPLE_ROOT_PATH` | Absolute path to the Ripple root (directory containing `ripple.yaml`). Always set. |
+| `RIPPLE_PACKAGE_PATH` | Absolute path to the current package directory. Set for `exec` / `exec:` only. |
+| `RIPPLE_PACKAGE_NAME` | Package name from that package's `pubspec.yaml`. Set for `exec` / `exec:` only. |
 
 `RIPPLE_PACKAGES` (selection filter) is read by Ripple itself; it is not
 injected into child processes beyond normal parent-environment inheritance.
