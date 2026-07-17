@@ -104,7 +104,7 @@ dart analyze --fatal-infos --fatal-warnings .
 dart test
 ```
 
-Once CI workflows land, prefer the same Ripple scripts CI runs.
+CI runs these same Ripple scripts on pull requests and pushes to `main`.
 
 ### Install from git (consumers)
 
