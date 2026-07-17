@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -37,7 +38,7 @@ void main() {
     if (text.isEmpty) {
       return const [];
     }
-    return text.split('\n');
+    return const LineSplitter().convert(text);
   }
 
   group('ripple list', () {
