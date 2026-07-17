@@ -59,11 +59,14 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
     return const [];
   }
 
+  // listSync requires the host path style; config globs use `/`, which
+  // package:path accepts as a separator on all platforms.
+  final listContext = p.Context(style: p.style, current: rootPath);
   final context = p.Context(style: p.Style.posix, current: rootPath);
   final candidates = <String, RipplePackage>{};
 
   for (final pattern in include) {
-    final glob = Glob(pattern, context: context);
+    final glob = Glob(pattern, context: listContext);
     for (final entity in glob.listSync(root: rootPath, followLinks: false)) {
       if (entity is! Directory) {
         continue;
