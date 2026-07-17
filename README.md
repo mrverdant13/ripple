@@ -131,10 +131,24 @@ Each script must declare **exactly one** of `run:` or `exec:` (XOR):
   Optional `filters` may include `dirExists`, `fileExists`, `dependsOn`, and
   `group`.
 
+The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
+list of strings** (sequential steps). Steps always stop on the first non-zero
+exit. For `exec:` lists, all steps run for a package before the next package
+(unless `--fail-fast` stops package iteration). Commands are not run through a
+shell — use `sh -c '…'` inside a step when you need pipes, redirects, or other
+shell features. Unquoted `&&` in a string command is rejected; use a YAML list
+instead.
+
 ```yaml
 scripts:
   format.ci:
     run: dart format --set-exit-if-changed .
+
+  check.ci:
+    run:
+      - dart format --set-exit-if-changed .
+      - dart analyze --fatal-infos --fatal-warnings .
+      - dart test
 
   analyze.ci:
     exec: dart analyze --fatal-infos --fatal-warnings .
@@ -143,10 +157,12 @@ scripts:
 ```
 
 Invalid configs (both `run` and `exec`, neither, `filters` on a `run:` script,
-or malformed YAML) fail with a clear config error.
+empty command lists, unquoted `&&` in a string command, or malformed YAML) fail
+with a clear config error.
 
-There is no `steps` / multi-script composition inside Ripple — compose with the
-shell (`&&`) outside the tool.
+There is no cross-script composition (for example referencing other script ids
+inside a list). Compose named scripts from the shell when needed
+(`ripple run format.ci && ripple run analyze.ci`).
 
 ## Commands
 
@@ -212,13 +228,15 @@ ripple run analyze.ci --packages core,ui --fail-fast
 
 Behavior depends on the script kind:
 
-- **`run:`** — runs once with cwd = the Ripple root. Only `RIPPLE_ROOT_PATH` is
-  set. Package filters (`--group`, `--packages`, `--dir-exists`,
-  `--file-exists`, `--depends-on`, and `RIPPLE_PACKAGES`) are rejected.
-- **`exec:`** — runs once per matching package (same sequential / fail-fast
-  model as [`ripple exec`](#ripple-exec)). Script-declared `filters` are
-  intersected with CLI filters and `RIPPLE_PACKAGES`. Package path/name vars
-  are set in addition to `RIPPLE_ROOT_PATH`.
+- **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
+  Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--packages`,
+  `--dir-exists`, `--file-exists`, `--depends-on`, and `RIPPLE_PACKAGES`) are
+  rejected.
+- **`exec:`** — for each matching package, runs all list steps in that package
+  (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
+  Script-declared `filters` are intersected with CLI filters and
+  `RIPPLE_PACKAGES`. Package path/name vars are set in addition to
+  `RIPPLE_ROOT_PATH`.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
@@ -248,7 +266,8 @@ Ripple intentionally does **not**:
 
 - Create or manage Dart **workspaces**
 - Generate **`pubspec_overrides.yaml`** or otherwise link packages
-- Provide script **`steps`** / multi-script composition (use shell `&&` instead)
+- Provide cross-script composition or sip-style `${{ }}` references (use a YAML
+  list for in-script steps, or shell `&&` between `ripple run` invocations)
 - Discover packages by anything other than `pubspec.yaml` presence under
   include/exclude globs
 - Publish to pub.dev as the v1 distribution channel (use git tags with

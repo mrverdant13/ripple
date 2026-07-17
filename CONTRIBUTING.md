@@ -136,13 +136,15 @@ All behavior changes should include or update tests.
 | Layer | Location | Notes |
 | --- | --- | --- |
 | Unit / integration | `test/` | Config parse, discovery, filters, scripts, CLI behavior |
-| Fixtures | `test/fixtures/` | Mini consumer trees (include/exclude decoys, XOR `run`/`exec`, fail-fast, vars) |
+| Fixtures | `test/fixtures/` | Mini consumer trees (include/exclude decoys, XOR `run`/`exec`, multi-step lists, fail-fast, vars) |
 
 Prioritize coverage for:
 
 - Glob include/exclude and package discovery
 - Filter combos (`dirExists`, `fileExists`, `dependsOn`, `group`, `--packages` / `RIPPLE_PACKAGES`)
 - Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` on a `run:` script)
+- Multi-step `run:` / `exec:` lists (sequential fail-fast; all steps per package)
+- Rejection of unquoted `&&` in string commands
 - Fail-fast on ad-hoc `exec` and `exec:` scripts
 - Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
 
@@ -267,7 +269,8 @@ git tag -l 'ripple_cli/*'
 
 - Importing or emulating another tool's config format
 - Dart workspace / `pubspec_overrides` generation
-- Script `steps` / multi-script composition inside Ripple
+- Cross-script composition or sip-style `${{ }}` references (in-script YAML
+  lists under `run:` / `exec:` are supported)
 - Versioning, changelog, or publish orchestration beyond git tags (until planned)
 
 ### Review checklist
