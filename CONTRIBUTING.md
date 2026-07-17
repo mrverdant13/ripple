@@ -88,7 +88,7 @@ path or git install when you want the `ripple` executable on your `PATH`.
 
 ### Common local checks
 
-Once `ripple.yaml` scripts exist, prefer:
+Prefer the dogfood scripts in root `ripple.yaml`:
 
 ```bash
 dart run bin/ripple.dart run format.ci
@@ -96,7 +96,7 @@ dart run bin/ripple.dart run analyze.ci
 dart run bin/ripple.dart run test.ci
 ```
 
-Equivalent direct Dart commands (useful before scripts land, or for debugging):
+Equivalent direct Dart commands (useful for debugging):
 
 ```bash
 dart format --set-exit-if-changed .
