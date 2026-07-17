@@ -1,0 +1,64 @@
+ripple_cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - bin/**
+          - lib/**
+          - test/**
+          - example/**
+          - pubspec.yaml
+          - pubspec.lock
+          - analysis_options.yaml
+          - ripple.yaml
+  - head-branch:
+      - ^ripple_cli(/|$)
+
+bot:
+  - head-branch:
+      - ^dependabot/.+
+
+build:
+  - head-branch:
+      - ^dependabot/pub/.+
+
+chore:
+  - head-branch:
+      - ^chore(/|$)
+      - ^ripple_cli/chore/release-
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+  - head-branch:
+      - ^ci(/|$)
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/CHANGELOG.md"
+          - "**/README.md"
+          - CONTRIBUTING.md
+          - doc/**
+  - head-branch:
+      - ^docs(/|$)
+
+feat:
+  - head-branch:
+      - ^feat(/|$)
+
+fix:
+  - head-branch:
+      - ^fix(/|$)
+
+refactor:
+  - head-branch:
+      - ^refactor(/|$)
+
+test:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/test/**"
+          - "**/e2e/**"
+          - "**/*_test.dart"
+  - head-branch:
+      - ^test(/|$)
