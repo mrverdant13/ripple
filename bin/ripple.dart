@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 import 'package:ripple_cli/ripple_cli.dart';
+import 'package:ripple_cli/src/config.dart';
 
 /// Entrypoint for the `ripple` executable.
 Future<void> main(List<String> args) async {
@@ -11,5 +12,8 @@ Future<void> main(List<String> args) async {
     stderr.writeln(error.message);
     stderr.writeln(error.usage);
     exitCode = 64;
+  } on RippleConfigException catch (error) {
+    stderr.writeln(error.message);
+    exitCode = 1;
   }
 }
