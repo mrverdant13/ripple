@@ -90,3 +90,39 @@ ripple list --depends-on path
 `RIPPLE_PACKAGES` (comma-separated names) intersects with `--packages` and every
 other active filter. Running outside any `ripple.yaml` ancestry fails with a
 config-not-found error.
+
+### `ripple exec`
+
+Run an ad-hoc command **once per matching package**, sequentially, with cwd set
+to each package directory. Pass the executable and its arguments after `--`.
+
+```bash
+ripple exec -- dart analyze .
+ripple exec --group libs -- dart test
+ripple exec --packages core,ui --fail-fast -- dart format --set-exit-if-changed .
+```
+
+Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
+
+| Flag | Description |
+| --- | --- |
+| `--fail-fast` | Stop after the first package whose command exits non-zero. |
+
+Without `--fail-fast`, every selected package still runs; the overall exit code
+is the first non-zero package exit (or `0` when all succeed).
+
+Missing `--` / an empty command fails with a usage error.
+
+### Environment variables
+
+Each package invocation receives these variables in the child environment (and
+as `$VAR` / `${VAR}` substitutions in the command arguments):
+
+| Variable | Value |
+| --- | --- |
+| `RIPPLE_ROOT_PATH` | Absolute path to the Ripple root (directory containing `ripple.yaml`). |
+| `RIPPLE_PACKAGE_PATH` | Absolute path to the current package directory. |
+| `RIPPLE_PACKAGE_NAME` | Package name from that package's `pubspec.yaml`. |
+
+`RIPPLE_PACKAGES` (selection filter) is read by Ripple itself; it is not
+injected into child processes beyond normal parent-environment inheritance.
