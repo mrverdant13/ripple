@@ -1,0 +1,18 @@
+name: discovery_workspace
+
+packages:
+  include:
+    - packages/**
+    - tool
+  exclude:
+    - '**/example'
+    - '**/example/**'
+    - '**/fixtures/**'
+    - '**/mold/**'
+  groups:
+    core:
+      - packages/core
+    libs:
+      - packages/*
+    tooling:
+      - tool
