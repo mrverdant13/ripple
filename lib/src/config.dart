@@ -1,6 +1,9 @@
 /// Load and validate `ripple.yaml` from a consumer repository.
 library;
 
+import 'package:checked_yaml/checked_yaml.dart';
+import 'package:json_annotation/json_annotation.dart';
+
 /// Thrown when `ripple.yaml` cannot be found, read, parsed, or validated.
 class RippleConfigException implements Exception {
   /// Creates a config error with a human-readable [message].
@@ -121,4 +124,307 @@ class RippleConfig {
 
   /// Named scripts keyed by script id.
   final Map<String, RippleScript> scripts;
+}
+
+/// Parses and validates [yamlContent] as a `ripple.yaml` document.
+///
+/// [rootPath] is the directory that contains the config file (not the file
+/// path itself). Throws [RippleConfigException] for invalid YAML or schema
+/// violations (including script `run`/`exec` XOR and `filters` on `run:`).
+RippleConfig parseRippleYaml(
+  String yamlContent, {
+  required String rootPath,
+  Uri? sourceUrl,
+}) {
+  try {
+    return checkedYamlDecode(
+      yamlContent,
+      (Map<dynamic, dynamic>? map) {
+        if (map == null) {
+          throw CheckedFromJsonException(
+            <String, dynamic>{},
+            null,
+            'RippleConfig',
+            'ripple.yaml must be a non-null YAML map',
+          );
+        }
+        return _configFromMap(map, rootPath: rootPath);
+      },
+      sourceUrl: sourceUrl,
+    );
+  } on ParsedYamlException catch (error) {
+    throw RippleConfigException(_parsedYamlMessage(error));
+  } on CheckedFromJsonException catch (error) {
+    throw RippleConfigException(_checkedFromJsonMessage(error));
+  }
+}
+
+RippleConfig _configFromMap(
+  Map<dynamic, dynamic> map, {
+  required String rootPath,
+}) {
+  final name = _optionalString(map, 'name', 'RippleConfig');
+  final packages = _packagesFromValue(map['packages'], map);
+  final scripts = _scriptsFromValue(map['scripts'], map);
+  return RippleConfig(
+    rootPath: rootPath,
+    name: name,
+    packages: packages,
+    scripts: scripts,
+  );
+}
+
+RipplePackages _packagesFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const RipplePackages();
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'packages',
+      'RippleConfig',
+      'Expected a map',
+    );
+  }
+  final map = Map<dynamic, dynamic>.from(value);
+  return RipplePackages(
+    include: _stringList(map, 'include', 'RipplePackages'),
+    exclude: _stringList(map, 'exclude', 'RipplePackages'),
+    groups: _groupsFromValue(map['groups'], map),
+  );
+}
+
+Map<String, List<String>> _groupsFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const {};
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'groups',
+      'RipplePackages',
+      'Expected a map of group name to path-glob lists',
+    );
+  }
+  final groups = <String, List<String>>{};
+  for (final entry in value.entries) {
+    final key = entry.key;
+    if (key is! String) {
+      throw CheckedFromJsonException(
+        Map<dynamic, dynamic>.from(value),
+        key?.toString(),
+        'RipplePackages',
+        'Group names must be strings',
+      );
+    }
+    final groupMap = Map<dynamic, dynamic>.from(value);
+    groups[key] = _stringListAt(
+      groupMap,
+      key,
+      entry.value,
+      'RipplePackages.groups',
+    );
+  }
+  return Map<String, List<String>>.unmodifiable(groups);
+}
+
+Map<String, RippleScript> _scriptsFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const {};
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'scripts',
+      'RippleConfig',
+      'Expected a map of script name to script definition',
+    );
+  }
+  final scripts = <String, RippleScript>{};
+  for (final entry in value.entries) {
+    final key = entry.key;
+    if (key is! String) {
+      throw CheckedFromJsonException(
+        Map<dynamic, dynamic>.from(value),
+        key?.toString(),
+        'RippleConfig',
+        'Script names must be strings',
+      );
+    }
+    scripts[key] = _scriptFromValue(key, entry.value, parent);
+  }
+  return Map<String, RippleScript>.unmodifiable(scripts);
+}
+
+RippleScript _scriptFromValue(
+  String name,
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'scripts',
+      'RippleConfig',
+      'Script "$name" must be a map',
+    );
+  }
+  final map = Map<dynamic, dynamic>.from(value);
+  final run = _optionalString(map, 'run', 'RippleScript');
+  final exec = _optionalString(map, 'exec', 'RippleScript');
+  final hasRun = run != null;
+  final hasExec = exec != null;
+
+  if (hasRun == hasExec) {
+    throw CheckedFromJsonException(
+      map,
+      hasRun ? 'run' : 'exec',
+      'RippleScript',
+      'Script "$name" must declare exactly one of `run:` or `exec:`',
+    );
+  }
+
+  final filtersValue = map['filters'];
+  if (hasRun && filtersValue != null) {
+    throw CheckedFromJsonException(
+      map,
+      'filters',
+      'RippleScript',
+      'Script "$name" uses `run:` and must not declare `filters`',
+    );
+  }
+
+  final command = hasRun ? run : exec;
+  if (command == null || command.trim().isEmpty) {
+    throw CheckedFromJsonException(
+      map,
+      hasRun ? 'run' : 'exec',
+      'RippleScript',
+      'Script "$name" command must be a non-empty string',
+    );
+  }
+
+  return RippleScript(
+    name: name,
+    kind: hasRun ? ScriptKind.run : ScriptKind.exec,
+    command: command,
+    filters: hasExec ? _filtersFromValue(filtersValue, map) : null,
+  );
+}
+
+ScriptFilters? _filtersFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return null;
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'RippleScript',
+      'Expected a map',
+    );
+  }
+  final map = Map<dynamic, dynamic>.from(value);
+  return ScriptFilters(
+    dirExists: _stringList(map, 'dirExists', 'ScriptFilters'),
+    fileExists: _stringList(map, 'fileExists', 'ScriptFilters'),
+    dependsOn: _stringList(map, 'dependsOn', 'ScriptFilters'),
+    group: _optionalString(map, 'group', 'ScriptFilters'),
+  );
+}
+
+String? _optionalString(
+  Map<dynamic, dynamic> map,
+  String key,
+  String className,
+) {
+  final value = map[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is! String) {
+    throw CheckedFromJsonException(
+      map,
+      key,
+      className,
+      'Expected a string',
+    );
+  }
+  return value;
+}
+
+List<String> _stringList(
+  Map<dynamic, dynamic> map,
+  String key,
+  String className,
+) {
+  return _stringListAt(map, key, map[key], className);
+}
+
+List<String> _stringListAt(
+  Map<dynamic, dynamic> map,
+  String key,
+  Object? value,
+  String className,
+) {
+  if (value == null) {
+    return const [];
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      map,
+      key,
+      className,
+      'Expected a list of strings',
+    );
+  }
+  final result = <String>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is! String) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        className,
+        'Expected a list of strings (index $i)',
+      );
+    }
+    result.add(element);
+  }
+  return List<String>.unmodifiable(result);
+}
+
+String _parsedYamlMessage(ParsedYamlException error) {
+  final formatted = error.formattedMessage;
+  if (formatted != null && formatted.isNotEmpty) {
+    return formatted;
+  }
+  if (error.message.isNotEmpty) {
+    return error.message;
+  }
+  return error.toString();
+}
+
+String _checkedFromJsonMessage(CheckedFromJsonException error) {
+  final key = error.key;
+  final message = error.message;
+  if (key != null && message != null) {
+    return 'Invalid `$key`: $message';
+  }
+  if (message != null) {
+    return message;
+  }
+  return error.toString();
 }
