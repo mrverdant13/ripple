@@ -62,7 +62,6 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
   // listSync requires the host path style; config globs use `/`, which
   // package:path accepts as a separator on all platforms.
   final listContext = p.Context(style: p.style, current: rootPath);
-  final context = p.Context(style: p.Style.posix, current: rootPath);
   final candidates = <String, RipplePackage>{};
 
   for (final pattern in include) {
@@ -92,8 +91,7 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
   }
 
   final excludeGlobs = [
-    for (final pattern in config.packages.exclude)
-      Glob(pattern, context: context),
+    for (final pattern in config.packages.exclude) _posixGlob(pattern),
   ];
 
   final packages = candidates.values
@@ -121,15 +119,11 @@ Map<String, List<RipplePackage>> resolvePackageGroups(
     return const {};
   }
 
-  final context = p.Context(
-    style: p.Style.posix,
-    current: p.normalize(config.rootPath),
-  );
   final groups = <String, List<RipplePackage>>{};
 
   for (final entry in config.packages.groups.entries) {
     final globs = [
-      for (final pattern in entry.value) Glob(pattern, context: context),
+      for (final pattern in entry.value) _posixGlob(pattern),
     ];
     final members = discovered
         .where((package) => _matchesAny(package.relativePath, globs))
@@ -140,6 +134,11 @@ Map<String, List<RipplePackage>> resolvePackageGroups(
 
   return Map<String, List<RipplePackage>>.unmodifiable(groups);
 }
+
+/// Context for matching config globs against POSIX [RipplePackage.relativePath].
+final _posixMatchContext = p.Context(style: p.Style.posix);
+
+Glob _posixGlob(String pattern) => Glob(pattern, context: _posixMatchContext);
 
 String _posixRelative(String rootPath, String absolutePath) {
   final relative = p.relative(absolutePath, from: rootPath);
