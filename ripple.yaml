@@ -1,0 +1,22 @@
+# Ripple dogfood config for this repository (single package at the repo root).
+name: ripple
+
+packages:
+  # Broad include so discovery is exercised; excludes keep fixture decoys out.
+  include:
+    - '**'
+  exclude:
+    - test/fixtures/**
+    - '**/example/**'
+    - '**/fixtures/**'
+    - '**/mold/**'
+
+scripts:
+  format.ci:
+    run: dart format --set-exit-if-changed .
+
+  analyze.ci:
+    run: dart analyze --fatal-infos --fatal-warnings .
+
+  test.ci:
+    run: dart test
