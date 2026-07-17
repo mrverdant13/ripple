@@ -37,19 +37,23 @@ ripple/                         # repo root = package root
 ├── pubspec.yaml                # name: ripple_cli
 ├── ripple.yaml                 # Repo management scripts (dogfood Ripple)
 ├── bin/
-│   └── ripple.dart             # CLI entrypoint (`ripple`)
+│   └── ripple.dart             # Thin executable entrypoint (`ripple`)
 ├── lib/
-│   ├── ripple_cli.dart
+│   ├── ripple_cli.dart         # Public barrel
 │   └── src/
+│       ├── ripple.dart         # Programmatic CLI entry (`ripple(...)`)
 │       ├── config.dart
 │       ├── discovery.dart
 │       ├── filters.dart
-│       ├── exec.dart
+│       ├── exec.dart           # Process runner helper (cwd/env/exit code)
 │       ├── scripts.dart
-│       └── cli/
-│           ├── list_command.dart
-│           ├── exec_command.dart
-│           └── run_command.dart
+│       └── commands/
+│           ├── commands.dart               # Commands barrel
+│           ├── ripple_command.dart         # Base command
+│           ├── ripple_command_runner.dart  # CommandRunner
+│           ├── list/list.dart
+│           ├── exec/exec.dart
+│           └── run/run.dart
 ├── test/
 │   └── fixtures/               # mini consumer trees for discovery/filter tests
 ├── example/                    # optional demo ripple.yaml + tiny packages
