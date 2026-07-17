@@ -238,7 +238,7 @@ RipplePackages _packagesFromValue(
       'Expected a map',
     );
   }
-  final map = Map<dynamic, dynamic>.from(value);
+  final Map<dynamic, dynamic> map = value;
   return RipplePackages(
     include: _stringList(map, 'include', 'RipplePackages'),
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
@@ -262,19 +262,19 @@ Map<String, List<String>> _groupsFromValue(
     );
   }
   final groups = <String, List<String>>{};
-  for (final entry in value.entries) {
+  final Map<dynamic, dynamic> map = value;
+  for (final entry in map.entries) {
     final key = entry.key;
     if (key is! String) {
       throw CheckedFromJsonException(
-        Map<dynamic, dynamic>.from(value),
+        map,
         key?.toString(),
         'RipplePackages',
         'Group names must be strings',
       );
     }
-    final groupMap = Map<dynamic, dynamic>.from(value);
     groups[key] = _stringListAt(
-      groupMap,
+      map,
       key,
       entry.value,
       'RipplePackages.groups',
@@ -299,11 +299,12 @@ Map<String, RippleScript> _scriptsFromValue(
     );
   }
   final scripts = <String, RippleScript>{};
-  for (final entry in value.entries) {
+  final Map<dynamic, dynamic> map = value;
+  for (final entry in map.entries) {
     final key = entry.key;
     if (key is! String) {
       throw CheckedFromJsonException(
-        Map<dynamic, dynamic>.from(value),
+        map,
         key?.toString(),
         'RippleConfig',
         'Script names must be strings',
@@ -327,7 +328,7 @@ RippleScript _scriptFromValue(
       'Script "$name" must be a map',
     );
   }
-  final map = Map<dynamic, dynamic>.from(value);
+  final Map<dynamic, dynamic> map = value;
   final run = _optionalString(map, 'run', 'RippleScript');
   final exec = _optionalString(map, 'exec', 'RippleScript');
   final hasRun = run != null;
@@ -385,7 +386,7 @@ ScriptFilters? _filtersFromValue(
       'Expected a map',
     );
   }
-  final map = Map<dynamic, dynamic>.from(value);
+  final Map<dynamic, dynamic> map = value;
   return ScriptFilters(
     dirExists: _stringList(map, 'dirExists', 'ScriptFilters'),
     fileExists: _stringList(map, 'fileExists', 'ScriptFilters'),
