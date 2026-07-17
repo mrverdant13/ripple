@@ -104,7 +104,6 @@ class RunCommand extends RippleCommand {
     final scriptName = rest.first;
     final config = loadRippleConfig();
     final script = resolveScript(config, scriptName);
-    final command = parseScriptCommand(script.command);
 
     final group = argResults!.option(groupOptionName);
     final cliCriteria = PackageFilterCriteria(
@@ -128,21 +127,25 @@ class RunCommand extends RippleCommand {
       }
 
       final vars = rippleEnvironment(rootPath: config.rootPath);
-      final resolvedCommand = substituteRippleVars(command, vars: vars);
       // run: scripts must not observe package-scoped RIPPLE_* vars, even when
       // those are present in the parent environment.
       final environment = Map<String, String>.from(Platform.environment)
         ..remove(ripplePackagePathEnvVar)
         ..remove(ripplePackageNameEnvVar)
         ..addAll(vars);
-      final result = await _runCommand(
-        resolvedCommand,
-        workingDirectory: config.rootPath,
-        environment: environment,
-        includeParentEnvironment: false,
-      );
-      if (result.exitCode != 0) {
-        exitCode = result.exitCode;
+      for (final commandString in script.commands) {
+        final command = parseScriptCommand(commandString);
+        final resolvedCommand = substituteRippleVars(command, vars: vars);
+        final result = await _runCommand(
+          resolvedCommand,
+          workingDirectory: config.rootPath,
+          environment: environment,
+          includeParentEnvironment: false,
+        );
+        if (result.exitCode != 0) {
+          exitCode = result.exitCode;
+          return;
+        }
       }
       return;
     }
@@ -164,18 +167,22 @@ class RunCommand extends RippleCommand {
         rootPath: config.rootPath,
         package: package,
       );
-      final resolvedCommand = substituteRippleVars(command, vars: vars);
-      final result = await _runCommand(
-        resolvedCommand,
-        workingDirectory: package.path,
-        environment: vars,
-      );
+      for (final commandString in script.commands) {
+        final command = parseScriptCommand(commandString);
+        final resolvedCommand = substituteRippleVars(command, vars: vars);
+        final result = await _runCommand(
+          resolvedCommand,
+          workingDirectory: package.path,
+          environment: vars,
+        );
 
-      if (result.exitCode != 0) {
-        firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
-        if (failFast) {
-          exitCode = result.exitCode;
-          return;
+        if (result.exitCode != 0) {
+          firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
+          if (failFast) {
+            exitCode = result.exitCode;
+            return;
+          }
+          break;
         }
       }
     }

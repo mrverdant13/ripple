@@ -49,12 +49,12 @@ scripts:
 
       final format = config.scripts['format.ci']!;
       expect(format.kind, ScriptKind.run);
-      expect(format.command, 'dart format --set-exit-if-changed .');
+      expect(format.commands, ['dart format --set-exit-if-changed .']);
       expect(format.filters, isNull);
 
       final analyze = config.scripts['analyze.ci']!;
       expect(analyze.kind, ScriptKind.exec);
-      expect(analyze.command, 'dart analyze .');
+      expect(analyze.commands, ['dart analyze .']);
       expect(analyze.filters!.dirExists, ['lib']);
       expect(analyze.filters!.fileExists, ['pubspec.yaml']);
       expect(analyze.filters!.dependsOn, ['test']);
@@ -129,6 +129,158 @@ scripts:
             (e) => e.message,
             'message',
             allOf(contains('run:'), contains('filters')),
+          ),
+        ),
+      );
+    });
+
+    test('parses run/exec as a YAML list of steps', () {
+      const yaml = '''
+scripts:
+  check.ci:
+    run:
+      - dart format .
+      - dart analyze .
+  analyze.ci:
+    exec:
+      - dart analyze .
+      - dart test
+    filters:
+      dirExists:
+        - lib
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(
+        config.scripts['check.ci']!.commands,
+        ['dart format .', 'dart analyze .'],
+      );
+      expect(config.scripts['check.ci']!.kind, ScriptKind.run);
+      expect(
+        config.scripts['analyze.ci']!.commands,
+        ['dart analyze .', 'dart test'],
+      );
+      expect(config.scripts['analyze.ci']!.kind, ScriptKind.exec);
+      expect(config.scripts['analyze.ci']!.filters!.dirExists, ['lib']);
+    });
+
+    test('allows quoted && inside sh -c', () {
+      const yaml = '''
+scripts:
+  shell.ci:
+    run: sh -c 'dart format . && dart analyze .'
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(
+        config.scripts['shell.ci']!.commands,
+        ["sh -c 'dart format . && dart analyze .'"],
+      );
+    });
+
+    test('rejects unquoted && in a string command', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run: dart format . && dart analyze .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('unquoted `&&`'),
+              contains('YAML list'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects unquoted && in a list step', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run:
+      - dart format .
+      - dart analyze . && dart test
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('unquoted `&&`'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects empty command list', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('non-empty'), contains('list')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-string list items', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run:
+      - dart format .
+      - 42
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('list of strings'), contains('index 1')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects blank command strings', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run: '   '
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('non-empty string'),
           ),
         ),
       );

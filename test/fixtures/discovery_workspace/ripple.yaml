@@ -24,6 +24,14 @@ scripts:
     run: sh -c 'printenv RIPPLE_ROOT_PATH; if printenv RIPPLE_PACKAGE_PATH >/dev/null 2>&1 || printenv RIPPLE_PACKAGE_NAME >/dev/null 2>&1; then exit 11; fi'
   root.subst:
     run: printf %s $RIPPLE_ROOT_PATH
+  root.steps:
+    run:
+      - printf %s first-
+      - printf %s second
+  root.steps.fail:
+    run:
+      - sh -c 'printf %s before-; exit 7'
+      - printf %s after
   pkg.name:
     exec: printenv RIPPLE_PACKAGE_NAME
   pkg.env:
@@ -32,6 +40,14 @@ scripts:
     exec: printf %s $RIPPLE_PACKAGE_NAME
   pkg.fail:
     exec: sh -c 'printf "%s\n" "$RIPPLE_PACKAGE_NAME"; if [ "$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi'
+  pkg.steps:
+    exec:
+      - printf %s $RIPPLE_PACKAGE_NAME-
+      - printf %s step2
+  pkg.steps.fail:
+    exec:
+      - sh -c 'printf "%s\n" "$RIPPLE_PACKAGE_NAME"; if [ "$RIPPLE_PACKAGE_NAME" = core ]; then exit 5; fi'
+      - printf %s should-not-run
   pkg.filtered:
     exec: printenv RIPPLE_PACKAGE_NAME
     filters:
