@@ -71,6 +71,22 @@ void main() {
       expect(stdoutLines(result), [p.normalize(fixtureRoot)]);
     });
 
+    test(
+      'run: script hides parent RIPPLE_PACKAGE_* even when already set',
+      () async {
+        final result = await runRipple(
+          ['run', 'root.env'],
+          environment: {
+            'RIPPLE_PACKAGE_PATH': '/leaked/package',
+            'RIPPLE_PACKAGE_NAME': 'leaked',
+          },
+        );
+
+        expect(result.exitCode, 0, reason: result.stderr as String);
+        expect(stdoutLines(result), [p.normalize(fixtureRoot)]);
+      },
+    );
+
     test('run: script substitutes RIPPLE_ROOT_PATH placeholders', () async {
       final result = await runRipple(['run', 'root.subst']);
 
