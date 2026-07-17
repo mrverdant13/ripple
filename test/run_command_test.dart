@@ -94,6 +94,21 @@ void main() {
       expect(result.stdout, p.normalize(fixtureRoot));
     });
 
+    test('run: multi-step script runs steps sequentially', () async {
+      final result = await runRipple(['run', 'root.steps']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, 'first-second');
+    });
+
+    test('run: multi-step script stops after the first failure', () async {
+      final result = await runRipple(['run', 'root.steps.fail']);
+
+      expect(result.exitCode, 7);
+      expect(result.stdout, 'before-');
+      expect(result.stdout, isNot(contains('after')));
+    });
+
     test('run: script rejects package filters', () async {
       final result = await runRipple([
         'run',
@@ -157,6 +172,51 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(result.stdout, 'ui');
     });
+
+    test('exec: multi-step script runs all steps per package', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.steps',
+        '--packages',
+        'core,ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, 'core-step2ui-step2');
+    });
+
+    test(
+      'exec: multi-step skips remaining steps for a failed package',
+      () async {
+        final result = await runRipple([
+          'run',
+          'pkg.steps.fail',
+          '--packages',
+          'core,ui',
+        ]);
+
+        expect(result.exitCode, 5);
+        expect(stdoutLines(result), ['core', 'ui', 'should-not-run']);
+      },
+    );
+
+    test(
+      'exec: multi-step --fail-fast stops before later packages',
+      () async {
+        final result = await runRipple([
+          'run',
+          '--fail-fast',
+          'pkg.steps.fail',
+          '--packages',
+          'core,ui',
+        ]);
+
+        expect(result.exitCode, 5);
+        expect(stdoutLines(result), ['core']);
+        expect(result.stdout, isNot(contains('ui')));
+        expect(result.stdout, isNot(contains('should-not-run')));
+      },
+    );
 
     test('script filters intersect with CLI filters', () async {
       final result = await runRipple([
