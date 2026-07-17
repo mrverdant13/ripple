@@ -115,8 +115,12 @@ class PackageFilterCriteria {
     );
   }
 
-  /// Intersects this criteria with [other] (union of path/dep lists; group and
-  /// name lists intersect when both sides are non-empty).
+  /// Combines this criteria with [other].
+  ///
+  /// Path and dependency lists (`dirExists`, `fileExists`, `dependsOn`) and
+  /// [groups] are concatenated so every entry must match (AND). Name
+  /// selections intersect when either side has an active [packageNames]
+  /// filter (`null` means unset).
   PackageFilterCriteria intersect(PackageFilterCriteria other) {
     return PackageFilterCriteria(
       dirExists: List<String>.unmodifiable([...dirExists, ...other.dirExists]),
