@@ -184,6 +184,25 @@ void main() {
       expect(names(filtered), ['ui']);
     });
 
+    test('empty name-selection intersection matches no packages', () {
+      final criteria = const PackageFilterCriteria().withPackageNameSelection(
+        packages: ['core'],
+        ripplePackagesEnv: 'ui',
+      );
+
+      expect(criteria.packageNames, isEmpty);
+      expect(criteria.isEmpty, isFalse);
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria,
+        groupMembership: groups,
+      );
+
+      expect(filtered, isEmpty);
+    });
+
     test('explicit package list intersects with path filters', () {
       final criteria = const PackageFilterCriteria(
         dirExists: ['lib'],
@@ -205,14 +224,16 @@ void main() {
       expect(parsePackageNameList('  a, b , ,c  '), ['a', 'b', 'c']);
     });
 
-    test('resolvePackageNameFilter ignores empty sides', () {
+    test('resolvePackageNameFilter ignores null sides', () {
+      expect(resolvePackageNameFilter(null), isNull);
       expect(resolvePackageNameFilter(['a', 'b']), ['a', 'b']);
-      expect(resolvePackageNameFilter([], ['a']), ['a']);
+      expect(resolvePackageNameFilter(null, ['a']), ['a']);
       expect(resolvePackageNameFilter(['a', 'b'], ['b', 'c']), ['b']);
       expect(
         resolvePackageNameFilter(['a', 'b'], ['b', 'c'], ['b', 'x']),
         ['b'],
       );
+      expect(resolvePackageNameFilter(['a'], ['b']), isEmpty);
     });
   });
 

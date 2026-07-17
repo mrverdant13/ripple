@@ -23,25 +23,30 @@ const ripplePackagesEnvVar = 'RIPPLE_PACKAGES';
 /// matches if its name is one of the selected names (OR).
 class PackageFilterCriteria {
   /// Creates filter criteria.
+  ///
+  /// [packageNames] is `null` when no name filter is active. An empty list
+  /// means a name filter is active and matches no packages (for example after
+  /// an empty intersection of `--packages` and `RIPPLE_PACKAGES`).
   const PackageFilterCriteria({
     this.dirExists = const [],
     this.fileExists = const [],
     this.dependsOn = const [],
     this.groups = const [],
-    this.packageNames = const [],
+    this.packageNames,
   });
 
   /// Builds criteria from script-declared [filters].
   ///
   /// Optional [packageNames] are applied as an additional name intersection.
+  /// An empty [packageNames] iterable leaves name selection unset.
   factory PackageFilterCriteria.fromScriptFilters(
     ScriptFilters? filters, {
     Iterable<String> packageNames = const [],
   }) {
+    final names =
+        packageNames.isEmpty ? null : List<String>.unmodifiable(packageNames);
     if (filters == null) {
-      return PackageFilterCriteria(
-        packageNames: List<String>.unmodifiable(packageNames),
-      );
+      return PackageFilterCriteria(packageNames: names);
     }
     return PackageFilterCriteria(
       dirExists: filters.dirExists,
@@ -50,7 +55,7 @@ class PackageFilterCriteria {
       groups: filters.group == null
           ? const []
           : List<String>.unmodifiable([filters.group!]),
-      packageNames: List<String>.unmodifiable(packageNames),
+      packageNames: names,
     );
   }
 
@@ -68,8 +73,11 @@ class PackageFilterCriteria {
   /// every listed group (intersection when more than one is set).
   final List<String> groups;
 
-  /// When non-empty, [RipplePackage.name] must be one of these names.
-  final List<String> packageNames;
+  /// Selected package names, or `null` when no name filter is active.
+  ///
+  /// When non-null (including empty), [RipplePackage.name] must be one of
+  /// these names. An empty list matches no packages.
+  final List<String>? packageNames;
 
   /// Whether any criterion is active.
   bool get isEmpty =>
@@ -77,21 +85,26 @@ class PackageFilterCriteria {
       fileExists.isEmpty &&
       dependsOn.isEmpty &&
       groups.isEmpty &&
-      packageNames.isEmpty;
+      packageNames == null;
 
   /// Returns a copy with [packageNames] replaced by the intersection of the
   /// current names (if any), [packages], and names parsed from
   /// [ripplePackagesEnv].
   ///
-  /// Empty inputs are ignored (they do not clear an existing selection).
+  /// Empty [packages] / env values are ignored (they do not clear an existing
+  /// selection). An empty intersection yields an empty [packageNames] list
+  /// (match nothing), not `null`.
   PackageFilterCriteria withPackageNameSelection({
     Iterable<String>? packages,
     String? ripplePackagesEnv,
   }) {
+    final fromFlag = packages == null || packages.isEmpty ? null : packages;
+    final fromEnvList = parsePackageNameList(ripplePackagesEnv);
+    final fromEnv = fromEnvList.isEmpty ? null : fromEnvList;
     final selected = resolvePackageNameFilter(
       packageNames,
-      packages ?? const <String>[],
-      parsePackageNameList(ripplePackagesEnv),
+      fromFlag,
+      fromEnv,
     );
     return PackageFilterCriteria(
       dirExists: dirExists,
@@ -132,20 +145,24 @@ List<String> parsePackageNameList(String? value) {
   ];
 }
 
-/// Intersects non-empty package-name lists.
+/// Intersects provided package-name lists.
 ///
-/// Empty lists are ignored. When every argument is empty, returns an empty
-/// list (meaning "no name filter").
-List<String> resolvePackageNameFilter(Iterable<String> first,
-    [Iterable<String>? second, Iterable<String>? third]) {
+/// Null arguments are ignored. When every argument is null, returns null
+/// (meaning "no name filter"). When at least one argument is non-null,
+/// returns their intersection, which may be empty (match nothing).
+List<String>? resolvePackageNameFilter(
+  Iterable<String>? first, [
+  Iterable<String>? second,
+  Iterable<String>? third,
+]) {
   final lists = <List<String>>[
-    List<String>.of(first),
+    if (first != null) List<String>.of(first),
     if (second != null) List<String>.of(second),
     if (third != null) List<String>.of(third),
-  ].where((list) => list.isNotEmpty).toList();
+  ];
 
   if (lists.isEmpty) {
-    return const [];
+    return null;
   }
 
   var result = lists.first;
@@ -200,8 +217,8 @@ List<RipplePackage> filterPackages(
     groupMemberPaths.addAll(memberPaths);
   }
 
-  final nameSet =
-      criteria.packageNames.isEmpty ? null : criteria.packageNames.toSet();
+  final selectedNames = criteria.packageNames;
+  final nameSet = selectedNames?.toSet();
 
   final filtered = <RipplePackage>[];
   for (final package in packages) {
