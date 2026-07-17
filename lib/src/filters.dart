@@ -177,7 +177,8 @@ List<String>? resolvePackageNameFilter(
 ///
 /// Group membership is resolved via [groupMembership] when provided; otherwise
 /// [resolvePackageGroups] is used. Throws [RippleConfigException] when a
-/// requested group name is not defined in [config].
+/// requested group name is not defined in [config], or when a provided
+/// [groupMembership] map omits a requested group.
 ///
 /// Order of [packages] is preserved.
 List<RipplePackage> filterPackages(
@@ -204,12 +205,24 @@ List<RipplePackage> filterPackages(
       groupMembership ?? resolvePackageGroups(config, packages: packages);
   final groupMemberPaths = <String>{};
   if (criteria.groups.isNotEmpty) {
+    List<RipplePackage> membersFor(String groupName) {
+      final members = groups[groupName];
+      if (members == null) {
+        throw RippleConfigException(
+          'Missing group membership for "$groupName". '
+          'Provide a complete groupMembership map or omit it to resolve '
+          'groups from config.',
+        );
+      }
+      return members;
+    }
+
     // Start from the first group, then intersect with each additional group.
-    var memberPaths = groups[criteria.groups.first]!
+    var memberPaths = membersFor(criteria.groups.first)
         .map((package) => package.relativePath)
         .toSet();
     for (var i = 1; i < criteria.groups.length; i++) {
-      final next = groups[criteria.groups[i]]!
+      final next = membersFor(criteria.groups[i])
           .map((package) => package.relativePath)
           .toSet();
       memberPaths = memberPaths.intersection(next);

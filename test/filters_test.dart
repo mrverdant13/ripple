@@ -261,5 +261,26 @@ void main() {
         ),
       );
     });
+
+    test('partial groupMembership map fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: const PackageFilterCriteria(groups: ['libs']),
+          groupMembership: const {},
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('Missing group membership for "libs"'),
+              contains('groupMembership'),
+            ),
+          ),
+        ),
+      );
+    });
   });
 }
