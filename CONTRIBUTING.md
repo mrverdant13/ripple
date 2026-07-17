@@ -113,7 +113,7 @@ Install or upgrade the CLI globally with [`dart install`](https://dart.dev/tools
 ([package descriptors](https://dart.dev/to/package-descriptors)):
 
 ```bash
-dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: ripple_cli/0.1.0}}'
+dart install 'ripple_cli@{git: {url: https://github.com/mrverdant13/ripple.git, ref: ripple_cli/0.0.1-dev.1}}'
 ```
 
 Pin `ref` to a release tag (`ripple_cli/<version>`, matching `pubspec.yaml`) or a
@@ -224,8 +224,8 @@ ripple_cli/<version>
 Examples:
 
 ```
+ripple_cli/0.0.1-dev.1
 ripple_cli/0.1.0
-ripple_cli/0.2.0
 ```
 
 ### Rules

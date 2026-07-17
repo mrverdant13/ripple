@@ -34,7 +34,7 @@ class RippleCommandRunner extends CommandRunner<void> {
   static const versionFlagName = 'version';
 
   /// The package version printed by `--version`.
-  static const packageVersion = '0.1.0';
+  static const packageVersion = '0.0.1-dev.1';
 
   /// The commands that encapsulate actual functionality.
   Iterable<RippleCommand> get featureCommands => {
