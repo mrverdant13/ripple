@@ -74,6 +74,15 @@ void main() {
       );
     });
 
+    test('preserves empty quoted arguments', () {
+      expect(parseScriptCommand('echo ""'), ['echo', '']);
+      expect(parseScriptCommand("echo ''"), ['echo', '']);
+      expect(
+        parseScriptCommand(r'''printf "%s" "" '''),
+        ['printf', '%s', ''],
+      );
+    });
+
     test('supports escaped characters outside quotes', () {
       expect(
         parseScriptCommand(r'echo hello\ world'),

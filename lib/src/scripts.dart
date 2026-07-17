@@ -36,13 +36,15 @@ List<String> parseScriptCommand(String command) {
   var inSingle = false;
   var inDouble = false;
   var escape = false;
+  var tokenStarted = false;
 
   void flush() {
-    if (buffer.isEmpty) {
+    if (!tokenStarted) {
       return;
     }
     args.add(buffer.toString());
     buffer.clear();
+    tokenStarted = false;
   }
 
   for (final unit in trimmed.runes) {
@@ -50,22 +52,26 @@ List<String> parseScriptCommand(String command) {
 
     if (escape) {
       buffer.write(char);
+      tokenStarted = true;
       escape = false;
       continue;
     }
 
     if (char == r'\' && !inSingle) {
       escape = true;
+      tokenStarted = true;
       continue;
     }
 
     if (char == "'" && !inDouble) {
       inSingle = !inSingle;
+      tokenStarted = true;
       continue;
     }
 
     if (char == '"' && !inSingle) {
       inDouble = !inDouble;
+      tokenStarted = true;
       continue;
     }
 
@@ -75,6 +81,7 @@ List<String> parseScriptCommand(String command) {
     }
 
     buffer.write(char);
+    tokenStarted = true;
   }
 
   if (escape) {
