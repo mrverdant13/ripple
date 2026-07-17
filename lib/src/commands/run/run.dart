@@ -129,10 +129,17 @@ class RunCommand extends RippleCommand {
 
       final vars = rippleEnvironment(rootPath: config.rootPath);
       final resolvedCommand = substituteRippleVars(command, vars: vars);
+      // run: scripts must not observe package-scoped RIPPLE_* vars, even when
+      // those are present in the parent environment.
+      final environment = Map<String, String>.from(Platform.environment)
+        ..remove(ripplePackagePathEnvVar)
+        ..remove(ripplePackageNameEnvVar)
+        ..addAll(vars);
       final result = await _runCommand(
         resolvedCommand,
         workingDirectory: config.rootPath,
-        environment: vars,
+        environment: environment,
+        includeParentEnvironment: false,
       );
       if (result.exitCode != 0) {
         exitCode = result.exitCode;
@@ -182,12 +189,14 @@ class RunCommand extends RippleCommand {
     List<String> command, {
     required String workingDirectory,
     required Map<String, String> environment,
+    bool includeParentEnvironment = true,
   }) async {
     try {
       return await runProcess(
         command,
         workingDirectory: workingDirectory,
         environment: environment,
+        includeParentEnvironment: includeParentEnvironment,
       );
     } on ProcessException catch (error) {
       final executable = command.isEmpty ? '(empty)' : command.first;

@@ -88,12 +88,17 @@ class ProcessRunResult {
 /// [ProcessRunResult.stderr] are empty. When `false`, output is captured and
 /// returned on the result (useful for unit tests of the helper itself).
 ///
-/// [environment] is merged on top of the inherited parent environment.
+/// When [includeParentEnvironment] is `true` (default), [environment] is
+/// merged on top of the inherited parent environment. When `false`, the child
+/// receives only [environment] (or an empty environment when [environment] is
+/// null), so callers can omit variables that would otherwise leak from the
+/// parent.
 Future<ProcessRunResult> runProcess(
   List<String> command, {
   required String workingDirectory,
   Map<String, String>? environment,
   bool inheritStdio = true,
+  bool includeParentEnvironment = true,
 }) async {
   if (command.isEmpty) {
     throw ArgumentError.value(command, 'command', 'must not be empty');
@@ -108,6 +113,7 @@ Future<ProcessRunResult> runProcess(
       arguments,
       workingDirectory: workingDirectory,
       environment: environment,
+      includeParentEnvironment: includeParentEnvironment,
       mode: ProcessStartMode.inheritStdio,
     );
     final exitCode = await process.exitCode;
@@ -123,6 +129,7 @@ Future<ProcessRunResult> runProcess(
     arguments,
     workingDirectory: workingDirectory,
     environment: environment,
+    includeParentEnvironment: includeParentEnvironment,
   );
   return ProcessRunResult(
     exitCode: result.exitCode,
