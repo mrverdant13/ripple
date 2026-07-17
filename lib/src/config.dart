@@ -310,7 +310,7 @@ Map<String, RippleScript> _scriptsFromValue(
         'Script names must be strings',
       );
     }
-    scripts[key] = _scriptFromValue(key, entry.value, parent);
+    scripts[key] = _scriptFromValue(key, entry.value, map);
   }
   return Map<String, RippleScript>.unmodifiable(scripts);
 }
@@ -318,13 +318,13 @@ Map<String, RippleScript> _scriptsFromValue(
 RippleScript _scriptFromValue(
   String name,
   Object? value,
-  Map<dynamic, dynamic> parent,
+  Map<dynamic, dynamic> scriptsMap,
 ) {
   if (value is! Map) {
     throw CheckedFromJsonException(
-      parent,
-      'scripts',
-      'RippleConfig',
+      scriptsMap,
+      name,
+      'RippleScript',
       'Script "$name" must be a map',
     );
   }
