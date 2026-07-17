@@ -117,7 +117,7 @@ class ExecCommand extends RippleCommand {
         package: package,
       );
       final resolvedCommand = substituteRippleVars(command, vars: vars);
-      final result = await runProcess(
+      final result = await _runPackageCommand(
         resolvedCommand,
         workingDirectory: package.path,
         environment: vars,
@@ -134,6 +134,33 @@ class ExecCommand extends RippleCommand {
 
     if (firstFailure != 0) {
       exitCode = firstFailure;
+    }
+  }
+
+  /// Exit code used when the child process cannot be started.
+  static const spawnFailureExitCode = 127;
+
+  Future<ProcessRunResult> _runPackageCommand(
+    List<String> command, {
+    required String workingDirectory,
+    required Map<String, String> environment,
+  }) async {
+    try {
+      return await runProcess(
+        command,
+        workingDirectory: workingDirectory,
+        environment: environment,
+      );
+    } on ProcessException catch (error) {
+      final executable = command.isEmpty ? '(empty)' : command.first;
+      stderr.writeln(
+        'Failed to run "$executable" in $workingDirectory: ${error.message}',
+      );
+      return const ProcessRunResult(
+        exitCode: spawnFailureExitCode,
+        stdout: '',
+        stderr: '',
+      );
     }
   }
 }

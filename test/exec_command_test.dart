@@ -164,6 +164,55 @@ void main() {
       expect(result.stderr, contains('--'));
     });
 
+    test('missing executable fails cleanly without a stack trace', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'ui',
+        '--',
+        'ripple-exec-missing-binary-that-does-not-exist',
+      ]);
+
+      expect(result.exitCode, 127);
+      expect(result.stderr, contains('Failed to run'));
+      expect(result.stderr,
+          contains('ripple-exec-missing-binary-that-does-not-exist'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
+      expect(result.stderr, isNot(contains('#0 ')));
+    });
+
+    test(
+      '--fail-fast stops after a ProcessException on the first package',
+      () async {
+        final result = await runRipple([
+          'exec',
+          '--fail-fast',
+          '--packages',
+          'core,ui',
+          '--',
+          'ripple-exec-missing-binary-that-does-not-exist',
+        ]);
+
+        expect(result.exitCode, 127);
+        final stderr = result.stderr as String;
+        expect('Failed to run'.allMatches(stderr).length, 1);
+      },
+    );
+
+    test('without --fail-fast continues after ProcessException', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'core,ui',
+        '--',
+        'ripple-exec-missing-binary-that-does-not-exist',
+      ]);
+
+      expect(result.exitCode, 127);
+      final stderr = result.stderr as String;
+      expect('Failed to run'.allMatches(stderr).length, 2);
+    });
+
     test('--help documents filters and --fail-fast', () async {
       final result = await runRipple(
         ['exec', '--help'],
