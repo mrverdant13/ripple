@@ -16,12 +16,13 @@ class RippleCommandRunner extends CommandRunner<void> {
               '\n'
               'Available commands:\n'
               '  list   List packages matching include/exclude and filters\n'
+              '  exec   Run an ad-hoc command once per matching package\n'
               '\n'
               'Planned commands:\n'
-              '  exec   Run an ad-hoc command once per matching package\n'
               '  run    Execute a named script from ripple.yaml',
         ) {
     addCommand(ListCommand());
+    addCommand(ExecCommand());
     argParser.addFlag(
       versionFlagName,
       abbr: 'v',
