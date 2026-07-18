@@ -377,7 +377,6 @@ Future<void> _forwardAndTrack(Stream<List<int>> stream, IOSink sink) {
 }
 
 StreamController<List<int>>? _stdinFanout;
-StreamSubscription<List<int>>? _stdinSourceSub;
 bool _stdinFanoutClosed = false;
 
 /// Broadcast view of parent [stdin] for repeated child process subscriptions.
@@ -388,7 +387,8 @@ Stream<List<int>> _sharedStdin() {
   if (_stdinFanout == null) {
     final fanout = StreamController<List<int>>.broadcast(sync: true);
     _stdinFanout = fanout;
-    _stdinSourceSub = stdin.listen(
+    // Keep listening for the process lifetime so later children can subscribe.
+    stdin.listen(
       fanout.add,
       onError: fanout.addError,
       onDone: () {
