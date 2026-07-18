@@ -81,10 +81,27 @@ const _ansiCyan = '\x1B[36m';
 const _ansiGreen = '\x1B[32m';
 const _ansiRed = '\x1B[31m';
 
+/// Whether [sink] should be treated as a terminal for banner color defaults.
+///
+/// Explicit [hasTerminal] wins. Otherwise a [Stdout] sink uses its own
+/// `hasTerminal`; non-Stdout sinks (buffers, files) default to `false`.
+bool resolveBannerHasTerminal(
+  StringSink sink, {
+  bool? hasTerminal,
+}) {
+  if (hasTerminal != null) {
+    return hasTerminal;
+  }
+  if (sink is Stdout) {
+    return sink.hasTerminal;
+  }
+  return false;
+}
+
 /// Whether package-scope banners should include ANSI color.
 ///
 /// Color is off when [forceColor] is `false`, when `NO_COLOR` is set, when
-/// `TERM` is `dumb`, or when stderr is not a terminal. [forceColor] `true`
+/// `TERM` is `dumb`, or when [hasTerminal] is `false`. [forceColor] `true`
 /// overrides those checks (useful in tests).
 bool packageScopeBannersUseColor({
   bool? forceColor,
@@ -101,7 +118,7 @@ bool packageScopeBannersUseColor({
   if (env['TERM'] == 'dumb') {
     return false;
   }
-  return hasTerminal ?? stderr.hasTerminal;
+  return hasTerminal ?? false;
 }
 
 /// Formats the start-of-package banner line (no trailing newline).
@@ -181,7 +198,7 @@ void announcePackageScopeStart(
   final out = sink ?? stderr;
   final color = packageScopeBannersUseColor(
     forceColor: forceColor,
-    hasTerminal: hasTerminal,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
     environment: environment,
   );
   _writePackageScopeBanner(
@@ -207,7 +224,7 @@ void announcePackageScopeEnd(
   final out = sink ?? stderr;
   final color = packageScopeBannersUseColor(
     forceColor: forceColor,
-    hasTerminal: hasTerminal,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
     environment: environment,
   );
   _writePackageScopeBanner(
