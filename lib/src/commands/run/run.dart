@@ -136,12 +136,14 @@ class RunCommand extends RippleCommand {
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
+        announceCommandStart(resolvedCommand);
         final result = await _runCommand(
           resolvedCommand,
           workingDirectory: config.rootPath,
           environment: environment,
           includeParentEnvironment: false,
         );
+        announceCommandEnd(resolvedCommand, exitCode: result.exitCode);
         if (result.exitCode != 0) {
           exitCode = result.exitCode;
           return;
@@ -172,11 +174,13 @@ class RunCommand extends RippleCommand {
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
+        announceCommandStart(resolvedCommand);
         final result = await _runCommand(
           resolvedCommand,
           workingDirectory: package.path,
           environment: vars,
         );
+        announceCommandEnd(resolvedCommand, exitCode: result.exitCode);
 
         if (result.exitCode != 0) {
           packageExitCode = result.exitCode;
