@@ -59,7 +59,8 @@ void main() {
         formatPackageScopeStart('packages/ui', color: true),
         contains('[ripple] ▶ packages/ui'),
       );
-      expect(formatPackageScopeStart('packages/ui', color: true), startsWith('\x1B['));
+      expect(formatPackageScopeStart('packages/ui', color: true),
+          startsWith('\x1B['));
       expect(
         formatPackageScopeEnd('packages/ui', exitCode: 0, color: true),
         contains('(exit 0)'),
