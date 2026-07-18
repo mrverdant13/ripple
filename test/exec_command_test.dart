@@ -84,6 +84,35 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
+    test('forwards stdin to the package command', () async {
+      final process = await Process.start(
+        Platform.resolvedExecutable,
+        [
+          '--packages=$packageConfig',
+          rippleScript,
+          'exec',
+          '--packages',
+          'ui',
+          '--',
+          'sh',
+          '-c',
+          'IFS= read -r line; printf %s "\$line"',
+        ],
+        workingDirectory: fixtureRoot,
+        environment: Platform.environment,
+        includeParentEnvironment: false,
+      );
+      process.stdin.writeln('from-stdin');
+      await process.stdin.close();
+
+      final stdoutText = await utf8.decodeStream(process.stdout);
+      final stderrText = await utf8.decodeStream(process.stderr);
+      final exitCode = await process.exitCode;
+
+      expect(exitCode, 0, reason: stderrText);
+      expect(stdoutText, 'from-stdin');
+    });
+
     test('end banner reports non-zero package exit codes', () async {
       final result = await runRipple([
         'exec',
