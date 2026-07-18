@@ -330,7 +330,9 @@ Future<ProcessRunResult> runProcess(
     );
     final stdoutDone = _forwardAndTrack(process.stdout, stdout);
     final stderrDone = _forwardAndTrack(process.stderr, stderr);
-    final stdinSub = _forwardStdin(stdin, process.stdin);
+    // Parent stdin is a single-subscription stream; share it across sequential
+    // child runs (multi-step scripts / multi-package exec).
+    final stdinSub = _forwardStdin(_sharedStdin(), process.stdin);
     try {
       final exitCode = await process.exitCode;
       await Future.wait<void>([stdoutDone, stderrDone]);
@@ -372,6 +374,31 @@ Future<void> _forwardAndTrack(Stream<List<int>> stream, IOSink sink) {
     cancelOnError: true,
   );
   return done.future;
+}
+
+StreamController<List<int>>? _stdinFanout;
+StreamSubscription<List<int>>? _stdinSourceSub;
+bool _stdinFanoutClosed = false;
+
+/// Broadcast view of parent [stdin] for repeated child process subscriptions.
+Stream<List<int>> _sharedStdin() {
+  if (_stdinFanoutClosed) {
+    return const Stream<List<int>>.empty();
+  }
+  if (_stdinFanout == null) {
+    final fanout = StreamController<List<int>>.broadcast(sync: true);
+    _stdinFanout = fanout;
+    _stdinSourceSub = stdin.listen(
+      fanout.add,
+      onError: fanout.addError,
+      onDone: () {
+        _stdinFanoutClosed = true;
+        fanout.close();
+      },
+      cancelOnError: false,
+    );
+  }
+  return _stdinFanout!.stream;
 }
 
 /// Forwards [source] to [childStdin], closing [childStdin] when [source] ends.
