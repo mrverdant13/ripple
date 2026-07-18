@@ -31,6 +31,18 @@ Map<String, String> rippleEnvironment({
   };
 }
 
+/// Writes a one-line banner naming the package about to run commands.
+///
+/// Uses [package.relativePath] (same form as `ripple list`) so multi-package
+/// `exec` / `exec:` runs stay easy to follow. Written to [sink] (stderr by
+/// default) so banners do not mix into child stdout that callers may parse.
+void announcePackageScope(
+  RipplePackage package, {
+  StringSink? sink,
+}) {
+  (sink ?? stderr).writeln('[ripple] ${package.relativePath}');
+}
+
 /// Substitutes `$RIPPLE_*` / `${RIPPLE_*}` placeholders in [command] args.
 ///
 /// Only the known Ripple variables present in [vars] are replaced. Unknown

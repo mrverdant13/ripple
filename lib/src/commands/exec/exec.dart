@@ -112,6 +112,7 @@ class ExecCommand extends RippleCommand {
     var firstFailure = 0;
 
     for (final package in filtered) {
+      announcePackageScope(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,

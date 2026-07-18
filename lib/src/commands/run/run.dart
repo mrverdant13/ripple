@@ -163,6 +163,7 @@ class RunCommand extends RippleCommand {
     var firstFailure = 0;
 
     for (final package in packages) {
+      announcePackageScope(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,
