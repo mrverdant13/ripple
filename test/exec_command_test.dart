@@ -64,7 +64,7 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
-    test('announces each package scope on stderr before running', () async {
+    test('announces begin/end package scope banners on stderr', () async {
       final result = await runRipple([
         'exec',
         '--packages',
@@ -75,11 +75,33 @@ void main() {
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(
-        stderrLines(result),
-        ['[ripple] packages/core', '[ripple] packages/ui'],
-      );
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 0)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
       expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test('end banner reports non-zero package exit codes', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'core,ui',
+        '--',
+        'sh',
+        '-c',
+        'if [ "\$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi',
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 3)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
     });
 
     test('sets cwd to the package path', () async {

@@ -32,18 +32,99 @@ void main() {
     });
   });
 
-  group('announcePackageScope', () {
-    test('writes a relative-path banner to the sink', () {
-      const package = RipplePackage(
-        name: 'ui',
-        path: '/repo/packages/ui',
-        relativePath: 'packages/ui',
+  group('package scope banners', () {
+    const package = RipplePackage(
+      name: 'ui',
+      path: '/repo/packages/ui',
+      relativePath: 'packages/ui',
+    );
+
+    test('formatPackageScopeStart / End use plain text without color', () {
+      expect(
+        formatPackageScopeStart('packages/ui', color: false),
+        '[ripple] ▶ packages/ui',
       );
+      expect(
+        formatPackageScopeEnd('packages/ui', exitCode: 0, color: false),
+        '[ripple] ■ packages/ui  (exit 0)',
+      );
+      expect(
+        formatPackageScopeEnd('packages/ui', exitCode: 3, color: false),
+        '[ripple] ■ packages/ui  (exit 3)',
+      );
+    });
+
+    test('formatPackageScopeStart / End wrap ANSI when color is on', () {
+      expect(
+        formatPackageScopeStart('packages/ui', color: true),
+        contains('[ripple] ▶ packages/ui'),
+      );
+      expect(formatPackageScopeStart('packages/ui', color: true), startsWith('\x1B['));
+      expect(
+        formatPackageScopeEnd('packages/ui', exitCode: 0, color: true),
+        contains('(exit 0)'),
+      );
+      expect(
+        formatPackageScopeEnd('packages/ui', exitCode: 3, color: true),
+        contains('(exit 3)'),
+      );
+    });
+
+    test('packageScopeBannersUseColor respects NO_COLOR and TERM=dumb', () {
+      expect(
+        packageScopeBannersUseColor(
+          hasTerminal: true,
+          environment: const {'NO_COLOR': '1'},
+        ),
+        isFalse,
+      );
+      expect(
+        packageScopeBannersUseColor(
+          hasTerminal: true,
+          environment: const {'TERM': 'dumb'},
+        ),
+        isFalse,
+      );
+      expect(
+        packageScopeBannersUseColor(
+          hasTerminal: true,
+          environment: const {},
+        ),
+        isTrue,
+      );
+      expect(
+        packageScopeBannersUseColor(
+          hasTerminal: false,
+          environment: const {},
+        ),
+        isFalse,
+      );
+      expect(
+        packageScopeBannersUseColor(forceColor: true, hasTerminal: false),
+        isTrue,
+      );
+    });
+
+    test('announcePackageScopeStart / End write to the sink', () {
       final sink = StringBuffer();
 
-      announcePackageScope(package, sink: sink);
+      announcePackageScopeStart(
+        package,
+        sink: sink,
+        forceColor: false,
+      );
+      announcePackageScopeEnd(
+        package,
+        exitCode: 0,
+        sink: sink,
+        forceColor: false,
+      );
 
-      expect(sink.toString(), '[ripple] packages/ui\n');
+      expect(
+        sink.toString(),
+        '[ripple] ▶ packages/ui\n'
+        '[ripple] ■ packages/ui  (exit 0)\n',
+      );
     });
   });
 

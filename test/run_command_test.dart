@@ -160,20 +160,42 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
-    test('exec: script announces each package scope once on stderr', () async {
+    test(
+      'exec: multi-step script announces begin/end once per package',
+      () async {
+        final result = await runRipple([
+          'run',
+          'pkg.steps',
+          '--packages',
+          'core,ui',
+        ]);
+
+        expect(result.exitCode, 0, reason: result.stderr as String);
+        expect(stderrLines(result), [
+          '[ripple] ▶ packages/core',
+          '[ripple] ■ packages/core  (exit 0)',
+          '[ripple] ▶ packages/ui',
+          '[ripple] ■ packages/ui  (exit 0)',
+        ]);
+        expect(result.stdout, 'core-step2ui-step2');
+      },
+    );
+
+    test('exec: end banner uses the failed step exit code', () async {
       final result = await runRipple([
         'run',
-        'pkg.steps',
+        'pkg.steps.fail',
         '--packages',
         'core,ui',
       ]);
 
-      expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(
-        stderrLines(result),
-        ['[ripple] packages/core', '[ripple] packages/ui'],
-      );
-      expect(result.stdout, 'core-step2ui-step2');
+      expect(result.exitCode, 5);
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 5)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
     });
 
     test('exec: script injects RIPPLE_* environment variables', () async {
