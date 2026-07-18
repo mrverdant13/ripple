@@ -21,5 +21,6 @@ dependencies:
   yaml: ^3.1.2
 
 dev_dependencies:
+  coverde: ^0.4.0
   lints: ^5.0.0
   test: ^1.25.8
