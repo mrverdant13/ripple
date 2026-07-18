@@ -163,11 +163,12 @@ class RunCommand extends RippleCommand {
     var firstFailure = 0;
 
     for (final package in packages) {
-      announcePackageScope(package);
+      announcePackageScopeStart(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,
       );
+      var packageExitCode = 0;
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
@@ -178,14 +179,17 @@ class RunCommand extends RippleCommand {
         );
 
         if (result.exitCode != 0) {
+          packageExitCode = result.exitCode;
           firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
           if (failFast) {
+            announcePackageScopeEnd(package, exitCode: packageExitCode);
             exitCode = result.exitCode;
             return;
           }
           break;
         }
       }
+      announcePackageScopeEnd(package, exitCode: packageExitCode);
     }
 
     if (firstFailure != 0) {
