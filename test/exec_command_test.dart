@@ -41,6 +41,14 @@ void main() {
     return const LineSplitter().convert(text);
   }
 
+  List<String> stderrLines(ProcessResult result) {
+    final text = (result.stderr as String).trimRight();
+    if (text.isEmpty) {
+      return const [];
+    }
+    return const LineSplitter().convert(text);
+  }
+
   group('ripple exec', () {
     test('runs the command once per selected package', () async {
       final result = await runRipple([
@@ -53,6 +61,24 @@ void main() {
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test('announces each package scope on stderr before running', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'core,ui',
+        '--',
+        'printenv',
+        'RIPPLE_PACKAGE_NAME',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(
+        stderrLines(result),
+        ['[ripple] packages/core', '[ripple] packages/ui'],
+      );
       expect(stdoutLines(result), ['core', 'ui']);
     });
 

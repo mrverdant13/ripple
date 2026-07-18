@@ -32,6 +32,21 @@ void main() {
     });
   });
 
+  group('announcePackageScope', () {
+    test('writes a relative-path banner to the sink', () {
+      const package = RipplePackage(
+        name: 'ui',
+        path: '/repo/packages/ui',
+        relativePath: 'packages/ui',
+      );
+      final sink = StringBuffer();
+
+      announcePackageScope(package, sink: sink);
+
+      expect(sink.toString(), '[ripple] packages/ui\n');
+    });
+  });
+
   group('substituteRippleVars', () {
     const vars = {
       rippleRootPathEnvVar: '/repo',
