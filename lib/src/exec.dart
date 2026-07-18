@@ -1,9 +1,52 @@
 /// Run a child process with cwd, environment, and exit-code capture.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'discovery.dart';
+
+/// Tracks whether the shared terminal cursor should be at the start of a line.
+///
+/// Child processes that inherit / share the terminal can end mid-line (for
+/// example `printf` without a trailing newline). Package-scope banners are
+/// written to stderr; when stdout and stderr both point at a TTY they share
+/// one cursor, so banners must insert a newline first when this is `false`.
+class TerminalLineState {
+  /// Whether the next write is expected to start at column 0.
+  bool atLineStart = true;
+
+  /// Updates [atLineStart] from forwarded child (or banner) bytes.
+  void observeBytes(List<int> data) {
+    if (data.isEmpty) {
+      return;
+    }
+    final last = data.last;
+    // LF or CR both return the cursor to the start of a line on typical TTYs.
+    atLineStart = last == 0x0A || last == 0x0D;
+  }
+
+  /// Updates [atLineStart] from text about to be / just written.
+  void observeText(String text) {
+    if (text.isEmpty) {
+      return;
+    }
+    final unit = text.codeUnitAt(text.length - 1);
+    atLineStart = unit == 0x0A || unit == 0x0D;
+  }
+
+  /// Writes a newline to [sink] when the cursor is not at line start.
+  void ensureLineStart(StringSink sink) {
+    if (atLineStart) {
+      return;
+    }
+    sink.write('\n');
+    atLineStart = true;
+  }
+}
+
+/// Process-wide line state for forwarded child stdio and Ripple banners.
+final terminalLineState = TerminalLineState();
 
 /// Environment variable for the absolute Ripple config root path.
 const rippleRootPathEnvVar = 'RIPPLE_ROOT_PATH';
@@ -87,24 +130,67 @@ String formatPackageScopeEnd(
   return '$_ansiBold$tone$body$_ansiReset';
 }
 
+/// Whether banner writes to [sink] should insert a newline when mid-line.
+///
+/// Only relevant when banners share a terminal cursor with child stdout
+/// (interactive runs). Piped captures keep stdout/stderr separate, so no
+/// leading newline is inserted there.
+bool shouldEnsureBannerLineStart(
+  StringSink sink, {
+  bool? forceEnsureLineStart,
+  bool? stdoutIsTerminal,
+  bool? stderrIsTerminal,
+}) {
+  if (forceEnsureLineStart != null) {
+    return forceEnsureLineStart;
+  }
+  if (!identical(sink, stderr)) {
+    return false;
+  }
+  return (stdoutIsTerminal ?? stdout.hasTerminal) &&
+      (stderrIsTerminal ?? stderr.hasTerminal);
+}
+
+void _writePackageScopeBanner(
+  String line, {
+  required StringSink sink,
+  required bool ensureLineStart,
+}) {
+  if (ensureLineStart) {
+    terminalLineState.ensureLineStart(sink);
+  }
+  sink.writeln(line);
+  terminalLineState.atLineStart = true;
+}
+
 /// Writes the start banner for a package command block.
 ///
 /// Uses [package.relativePath] (same form as `ripple list`). Written to
 /// [sink] (stderr by default) so banners do not mix into child stdout.
+///
+/// When stdout and stderr share a TTY, inserts a newline first if the previous
+/// child output did not end the line (see [terminalLineState]).
 void announcePackageScopeStart(
   RipplePackage package, {
   StringSink? sink,
   bool? forceColor,
   bool? hasTerminal,
+  bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
+  final out = sink ?? stderr;
   final color = packageScopeBannersUseColor(
     forceColor: forceColor,
     hasTerminal: hasTerminal,
     environment: environment,
   );
-  (sink ?? stderr).writeln(
+  _writePackageScopeBanner(
     formatPackageScopeStart(package.relativePath, color: color),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
   );
 }
 
@@ -115,18 +201,25 @@ void announcePackageScopeEnd(
   StringSink? sink,
   bool? forceColor,
   bool? hasTerminal,
+  bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
+  final out = sink ?? stderr;
   final color = packageScopeBannersUseColor(
     forceColor: forceColor,
     hasTerminal: hasTerminal,
     environment: environment,
   );
-  (sink ?? stderr).writeln(
+  _writePackageScopeBanner(
     formatPackageScopeEnd(
       package.relativePath,
       exitCode: exitCode,
       color: color,
+    ),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
     ),
   );
 }
@@ -184,9 +277,11 @@ class ProcessRunResult {
 /// remainder are arguments. Does not invoke a shell.
 ///
 /// When [inheritStdio] is `true` (default), the child's stdout/stderr are
-/// inherited by this process and [ProcessRunResult.stdout] /
-/// [ProcessRunResult.stderr] are empty. When `false`, output is captured and
-/// returned on the result (useful for unit tests of the helper itself).
+/// forwarded to this process and [ProcessRunResult.stdout] /
+/// [ProcessRunResult.stderr] are empty. Forwarding (instead of OS inherit)
+/// lets Ripple update [terminalLineState] so package banners can start on a
+/// fresh line after mid-line child output. When `false`, output is captured
+/// and returned on the result (useful for unit tests of the helper itself).
 ///
 /// When [includeParentEnvironment] is `true` (default), [environment] is
 /// merged on top of the inherited parent environment. When `false`, the child
@@ -214,9 +309,12 @@ Future<ProcessRunResult> runProcess(
       workingDirectory: workingDirectory,
       environment: environment,
       includeParentEnvironment: includeParentEnvironment,
-      mode: ProcessStartMode.inheritStdio,
     );
+    final stdoutDone = _forwardAndTrack(process.stdout, stdout);
+    final stderrDone = _forwardAndTrack(process.stderr, stderr);
     final exitCode = await process.exitCode;
+    await Future.wait<void>([stdoutDone, stderrDone]);
+    await Future.wait<dynamic>([stdout.flush(), stderr.flush()]);
     return ProcessRunResult(
       exitCode: exitCode,
       stdout: '',
@@ -236,4 +334,18 @@ Future<ProcessRunResult> runProcess(
     stdout: result.stdout as String,
     stderr: result.stderr as String,
   );
+}
+
+Future<void> _forwardAndTrack(Stream<List<int>> stream, IOSink sink) {
+  final done = Completer<void>();
+  stream.listen(
+    (data) {
+      sink.add(data);
+      terminalLineState.observeBytes(data);
+    },
+    onDone: done.complete,
+    onError: done.completeError,
+    cancelOnError: true,
+  );
+  return done.future;
 }
