@@ -3,6 +3,7 @@ name: ripple
 
 packages:
   # Broad include so discovery is exercised; excludes keep fixture decoys out.
+  # `**` also selects the Ripple root when it is a package.
   include:
     - '**'
   exclude:
@@ -18,22 +19,26 @@ scripts:
   analyze.ci:
     run: dart analyze --fatal-infos --fatal-warnings .
 
-  # Root package is not matched by packages.include globs, so these use run:
-  # (cwd = Ripple root) rather than exec: over discovered packages.
   test:
-    run:
+    exec:
       - dart run coverde optimize-tests --include test/**_test.dart --output test/optimized_test.dart
-      - dart test --color --coverage-path coverage/lcov.info --coverage-package ripple_cli --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
+      - dart test --color --coverage-path coverage/lcov.info --coverage-package $RIPPLE_PACKAGE_NAME --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
+    filters:
+      dependsOn: [test]
+      dirExists: [test]
 
   test.ci:
-    run:
+    exec:
       - dart run coverde optimize-tests --include test/**_test.dart --output test/optimized_test.dart
-      - dart test --coverage-path coverage/lcov.info --coverage-package ripple_cli --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
+      - dart test --coverage-path coverage/lcov.info --coverage-package $RIPPLE_PACKAGE_NAME --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
+    filters:
+      dependsOn: [test]
+      dirExists: [test]
 
   coverage.merge:
     run:
       - dart run coverde rm --no-dry-run $RIPPLE_ROOT_PATH/coverage/lcov.merged.info
-      - dart run coverde transform --input coverage/lcov.info --output $RIPPLE_ROOT_PATH/coverage/lcov.merged.info --transformations relative=$RIPPLE_ROOT_PATH
+      - dart run bin/ripple.dart exec --file-exists coverage/lcov.info -- dart run coverde transform --input coverage/lcov.info --output $RIPPLE_ROOT_PATH/coverage/lcov.merged.info --transformations relative=$RIPPLE_ROOT_PATH
 
   coverage.check:
     run: dart run coverde check --input $RIPPLE_ROOT_PATH/coverage/lcov.merged.info 100
