@@ -377,6 +377,7 @@ Future<void> _forwardAndTrack(Stream<List<int>> stream, IOSink sink) {
 }
 
 StreamController<List<int>>? _stdinFanout;
+StreamSubscription<List<int>>? _stdinSourceSub;
 bool _stdinFanoutClosed = false;
 
 /// Broadcast view of parent [stdin] for repeated child process subscriptions.
@@ -387,18 +388,40 @@ Stream<List<int>> _sharedStdin() {
   if (_stdinFanout == null) {
     final fanout = StreamController<List<int>>.broadcast(sync: true);
     _stdinFanout = fanout;
-    // Keep listening for the process lifetime so later children can subscribe.
-    stdin.listen(
+    // Keep listening across sequential children; [detachSharedStdin] cancels
+    // this so an interactive TTY does not keep the isolate alive after the CLI
+    // finishes.
+    _stdinSourceSub = stdin.listen(
       fanout.add,
       onError: fanout.addError,
       onDone: () {
         _stdinFanoutClosed = true;
+        _stdinSourceSub = null;
         fanout.close();
       },
       cancelOnError: false,
     );
   }
   return _stdinFanout!.stream;
+}
+
+/// Stops shared parent-stdin forwarding so the isolate can exit.
+///
+/// Safe to call when forwarding was never started. After this, later
+/// [runProcess] inheritStdio runs see a closed stdin (immediate EOF).
+Future<void> detachSharedStdin() async {
+  final sourceSub = _stdinSourceSub;
+  _stdinSourceSub = null;
+  if (sourceSub != null) {
+    await sourceSub.cancel();
+  }
+
+  final fanout = _stdinFanout;
+  _stdinFanout = null;
+  _stdinFanoutClosed = true;
+  if (fanout != null && !fanout.isClosed) {
+    await fanout.close();
+  }
 }
 
 /// Forwards [source] to [childStdin], closing [childStdin] when [source] ends.

@@ -313,6 +313,13 @@ void main() {
     });
   });
 
+  group('detachSharedStdin', () {
+    test('is safe to call when forwarding was never started', () async {
+      await detachSharedStdin();
+      await detachSharedStdin();
+    });
+  });
+
   group('runProcess', () {
     test('runs a command with cwd and returns exit code', () async {
       final temp = Directory.systemTemp.createTempSync('ripple_exec_helper_');
