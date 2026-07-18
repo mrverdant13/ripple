@@ -211,7 +211,9 @@ relative path (same form as [`ripple list`](#ripple-list)):
 
 On an interactive terminal, banners are colorized (cyan start; green or red
 end by exit code). Color is disabled when stderr is not a TTY, when
-`NO_COLOR` is set, or when `TERM=dumb`.
+`NO_COLOR` is set, or when `TERM=dumb`. If the previous command left the
+cursor mid-line (for example `printf` without a trailing newline), Ripple
+inserts a newline before the next banner so markers stay on their own line.
 
 ```bash
 ripple exec -- dart analyze .
