@@ -276,12 +276,13 @@ class ProcessRunResult {
 /// [command] must be non-empty; the first element is the executable and the
 /// remainder are arguments. Does not invoke a shell.
 ///
-/// When [inheritStdio] is `true` (default), the child's stdout/stderr are
-/// forwarded to this process and [ProcessRunResult.stdout] /
-/// [ProcessRunResult.stderr] are empty. Forwarding (instead of OS inherit)
-/// lets Ripple update [terminalLineState] so package banners can start on a
-/// fresh line after mid-line child output. When `false`, output is captured
-/// and returned on the result (useful for unit tests of the helper itself).
+/// When [inheritStdio] is `true` (default), the child's stdin/stdout/stderr
+/// are connected to this process: stdout/stderr are forwarded (and tracked for
+/// [terminalLineState]), and parent stdin is forwarded to the child. Result
+/// stdout/stderr strings are empty. Forwarding (instead of OS inherit) lets
+/// Ripple keep package banners on their own line after mid-line child output.
+/// When `false`, output is captured and returned on the result (useful for
+/// unit tests of the helper itself).
 ///
 /// When [includeParentEnvironment] is `true` (default), [environment] is
 /// merged on top of the inherited parent environment. When `false`, the child
@@ -312,14 +313,20 @@ Future<ProcessRunResult> runProcess(
     );
     final stdoutDone = _forwardAndTrack(process.stdout, stdout);
     final stderrDone = _forwardAndTrack(process.stderr, stderr);
-    final exitCode = await process.exitCode;
-    await Future.wait<void>([stdoutDone, stderrDone]);
-    await Future.wait<dynamic>([stdout.flush(), stderr.flush()]);
-    return ProcessRunResult(
-      exitCode: exitCode,
-      stdout: '',
-      stderr: '',
-    );
+    final stdinSub = _forwardStdin(stdin, process.stdin);
+    try {
+      final exitCode = await process.exitCode;
+      await Future.wait<void>([stdoutDone, stderrDone]);
+      await Future.wait<dynamic>([stdout.flush(), stderr.flush()]);
+      return ProcessRunResult(
+        exitCode: exitCode,
+        stdout: '',
+        stderr: '',
+      );
+    } finally {
+      await stdinSub.cancel();
+      await process.stdin.close().catchError((_) {});
+    }
   }
 
   final result = await Process.run(
@@ -348,4 +355,27 @@ Future<void> _forwardAndTrack(Stream<List<int>> stream, IOSink sink) {
     cancelOnError: true,
   );
   return done.future;
+}
+
+/// Forwards [source] to [childStdin], closing [childStdin] when [source] ends.
+StreamSubscription<List<int>> _forwardStdin(
+  Stream<List<int>> source,
+  IOSink childStdin,
+) {
+  return source.listen(
+    (data) {
+      try {
+        childStdin.add(data);
+      } on StateError {
+        // Child stdin already closed.
+      }
+    },
+    onDone: () {
+      childStdin.close().catchError((_) {});
+    },
+    onError: (_) {
+      childStdin.close().catchError((_) {});
+    },
+    cancelOnError: true,
+  );
 }
