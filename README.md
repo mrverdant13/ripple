@@ -118,6 +118,8 @@ packages:
 
 - **`include`** — glob patterns relative to the Ripple root for candidate
   package directories (a directory is a package iff it contains `pubspec.yaml`).
+  Patterns that match the Ripple root itself (e.g. `**`, `.`) select the root
+  package when it has a `pubspec.yaml`.
 - **`exclude`** — glob patterns subtracted from include matches.
 - **`groups`** — named sets of path globs used when filtering by group.
 

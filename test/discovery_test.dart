@@ -100,6 +100,97 @@ void main() {
         isFalse,
       );
     });
+
+    group('root package with pubspec.yaml', () {
+      late Directory tempRoot;
+
+      setUp(() {
+        tempRoot = Directory.systemTemp.createTempSync('ripple_discovery_');
+        File(p.join(tempRoot.path, 'pubspec.yaml')).writeAsStringSync('''
+name: root_pkg
+environment:
+  sdk: ^3.5.0
+''');
+        final nested = Directory(p.join(tempRoot.path, 'packages', 'child'))
+          ..createSync(recursive: true);
+        File(p.join(nested.path, 'pubspec.yaml')).writeAsStringSync('''
+name: child_pkg
+environment:
+  sdk: ^3.5.0
+''');
+      });
+
+      tearDown(() {
+        if (tempRoot.existsSync()) {
+          tempRoot.deleteSync(recursive: true);
+        }
+      });
+
+      test("include '**' selects the Ripple root package", () {
+        final config = RippleConfig(
+          rootPath: tempRoot.path,
+          packages: const RipplePackages(include: ['**']),
+        );
+
+        final packages = discoverPackages(config);
+        expect(
+          packages.map((package) => package.relativePath).toList(),
+          ['.', 'packages/child'],
+        );
+        expect(
+          packages.map((package) => package.name).toList(),
+          ['root_pkg', 'child_pkg'],
+        );
+        expect(packages.first.path, p.normalize(tempRoot.path));
+      });
+
+      test("include '.' selects only the Ripple root package", () {
+        final config = RippleConfig(
+          rootPath: tempRoot.path,
+          packages: const RipplePackages(include: ['.']),
+        );
+
+        final packages = discoverPackages(config);
+        expect(
+          packages.map((package) => package.relativePath).toList(),
+          ['.'],
+        );
+        expect(packages.single.name, 'root_pkg');
+      });
+
+      test("include 'packages/**' does not invent a root package", () {
+        final config = RippleConfig(
+          rootPath: tempRoot.path,
+          packages: const RipplePackages(include: ['packages/**']),
+        );
+
+        final packages = discoverPackages(config);
+        expect(
+          packages.map((package) => package.relativePath).toList(),
+          ['packages/child'],
+        );
+        expect(
+          packages.any((package) => package.relativePath == '.'),
+          isFalse,
+        );
+      });
+
+      test('exclude matching . removes the root package', () {
+        final config = RippleConfig(
+          rootPath: tempRoot.path,
+          packages: const RipplePackages(
+            include: ['**'],
+            exclude: ['.'],
+          ),
+        );
+
+        final packages = discoverPackages(config);
+        expect(
+          packages.map((package) => package.relativePath).toList(),
+          ['packages/child'],
+        );
+      });
+    });
   });
 
   group('resolvePackageGroups', () {

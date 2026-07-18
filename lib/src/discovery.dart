@@ -65,28 +65,18 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
   final candidates = <String, RipplePackage>{};
 
   for (final pattern in include) {
+    // Glob.listSync walks descendants of [rootPath] only; patterns that match
+    // '.' (e.g. '**', '.') must also consider the Ripple root itself.
+    if (_posixGlob(pattern).matches('.')) {
+      _tryAddPackage(candidates, rootPath, rootPath);
+    }
+
     final glob = Glob(pattern, context: listContext);
     for (final entity in glob.listSync(root: rootPath, followLinks: false)) {
       if (entity is! Directory) {
         continue;
       }
-      final packageDir = p.normalize(entity.path);
-      final pubspecFile = File(p.join(packageDir, 'pubspec.yaml'));
-      if (!pubspecFile.existsSync()) {
-        continue;
-      }
-
-      final relativePath = _posixRelative(rootPath, packageDir);
-      if (candidates.containsKey(relativePath)) {
-        continue;
-      }
-
-      final name = _readPackageName(pubspecFile);
-      candidates[relativePath] = RipplePackage(
-        name: name,
-        path: packageDir,
-        relativePath: relativePath,
-      );
+      _tryAddPackage(candidates, rootPath, p.normalize(entity.path));
     }
   }
 
@@ -139,6 +129,31 @@ Map<String, List<RipplePackage>> resolvePackageGroups(
 final _posixMatchContext = p.Context(style: p.Style.posix);
 
 Glob _posixGlob(String pattern) => Glob(pattern, context: _posixMatchContext);
+
+/// Adds [packageDir] to [candidates] when it contains a `pubspec.yaml` and is
+/// not already present (keyed by posix relative path from [rootPath]).
+void _tryAddPackage(
+  Map<String, RipplePackage> candidates,
+  String rootPath,
+  String packageDir,
+) {
+  final pubspecFile = File(p.join(packageDir, 'pubspec.yaml'));
+  if (!pubspecFile.existsSync()) {
+    return;
+  }
+
+  final relativePath = _posixRelative(rootPath, packageDir);
+  if (candidates.containsKey(relativePath)) {
+    return;
+  }
+
+  final name = _readPackageName(pubspecFile);
+  candidates[relativePath] = RipplePackage(
+    name: name,
+    path: packageDir,
+    relativePath: relativePath,
+  );
+}
 
 String _posixRelative(String rootPath, String absolutePath) {
   final relative = p.relative(absolutePath, from: rootPath);
