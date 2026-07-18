@@ -201,11 +201,15 @@ Run an ad-hoc command **once per matching package**, sequentially, with cwd set
 to each package directory. Pass the executable and its arguments after `--`.
 
 Each package is wrapped in begin/end stderr banners using that package's
-relative path (same form as [`ripple list`](#ripple-list)):
+relative path (same form as [`ripple list`](#ripple-list)). Inside that
+block, Ripple also prints start/end banners for the resolved command (after
+`$RIPPLE_*` substitution) so each argv is visible next to its output:
 
 ```text
 [ripple] ▶ packages/core
+[ripple] $ dart analyze .
 … command output …
+[ripple] $ dart analyze .  (exit 0)
 [ripple] ■ packages/core  (exit 0)
 ```
 
@@ -248,14 +252,15 @@ Behavior depends on the script kind:
 - **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
   Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--packages`,
   `--dir-exists`, `--file-exists`, `--depends-on`, and `RIPPLE_PACKAGES`) are
-  rejected.
+  rejected. Each step gets command start/end stderr banners (no package-scope
+  banners).
 - **`exec:`** — for each matching package, runs all list steps in that package
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
   Script-declared `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`. Package path/name vars are set in addition to
   `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners are printed once
-  per package (not once per step); the end banner reports that package's
-  exit code.
+  per package; each step also gets its own command start/end banners. The
+  package end banner reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 

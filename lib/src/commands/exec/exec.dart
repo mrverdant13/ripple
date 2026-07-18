@@ -118,11 +118,13 @@ class ExecCommand extends RippleCommand {
         package: package,
       );
       final resolvedCommand = substituteRippleVars(command, vars: vars);
+      announceCommandStart(resolvedCommand);
       final result = await _runPackageCommand(
         resolvedCommand,
         workingDirectory: package.path,
         environment: vars,
       );
+      announceCommandEnd(resolvedCommand, exitCode: result.exitCode);
       announcePackageScopeEnd(package, exitCode: result.exitCode);
 
       if (result.exitCode != 0) {

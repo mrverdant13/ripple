@@ -64,7 +64,7 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
-    test('announces begin/end package scope banners on stderr', () async {
+    test('announces package and command banners on stderr', () async {
       final result = await runRipple([
         'exec',
         '--packages',
@@ -77,8 +77,12 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stderrLines(result), [
         '[ripple] ▶ packages/core',
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME',
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
         '[ripple] ■ packages/core  (exit 0)',
         '[ripple] ▶ packages/ui',
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME',
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
         '[ripple] ■ packages/ui  (exit 0)',
       ]);
       expect(stdoutLines(result), ['core', 'ui']);
@@ -127,8 +131,12 @@ void main() {
       expect(result.exitCode, 3);
       expect(stderrLines(result), [
         '[ripple] ▶ packages/core',
+        '[ripple] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'',
+        '[ripple] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'  (exit 3)',
         '[ripple] ■ packages/core  (exit 3)',
         '[ripple] ▶ packages/ui',
+        '[ripple] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'',
+        '[ripple] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'  (exit 0)',
         '[ripple] ■ packages/ui  (exit 0)',
       ]);
     });

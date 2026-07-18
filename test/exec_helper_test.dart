@@ -258,6 +258,91 @@ void main() {
     });
   });
 
+  group('announceCommand', () {
+    tearDown(() {
+      terminalLineState.atLineStart = true;
+    });
+
+    test('formatCommandLine joins and quotes args that need it', () {
+      expect(formatCommandLine(['dart', 'analyze', '.']), 'dart analyze .');
+      expect(formatCommandLine(['printf', '%s', 'hello world']),
+          "printf %s 'hello world'");
+      expect(
+        formatCommandLine(['sh', '-c', "echo 'hi'"]),
+        r"sh -c 'echo '\''hi'\'''",
+      );
+      expect(formatCommandLine(['tool', '']), "tool ''");
+    });
+
+    test('formatCommandStart / End use plain text without color', () {
+      const command = ['dart', 'analyze', '.'];
+      expect(
+        formatCommandStart(command, color: false),
+        '[ripple] \$ dart analyze .',
+      );
+      expect(
+        formatCommandEnd(command, exitCode: 0, color: false),
+        '[ripple] \$ dart analyze .  (exit 0)',
+      );
+      expect(
+        formatCommandEnd(command, exitCode: 3, color: false),
+        '[ripple] \$ dart analyze .  (exit 3)',
+      );
+    });
+
+    test('formatCommandStart / End wrap ANSI when color is on', () {
+      const command = ['dart', 'test'];
+      expect(
+        formatCommandStart(command, color: true),
+        contains('[ripple] \$ dart test'),
+      );
+      expect(formatCommandStart(command, color: true), startsWith('\x1B['));
+      expect(
+        formatCommandEnd(command, exitCode: 0, color: true),
+        contains('(exit 0)'),
+      );
+      expect(
+        formatCommandEnd(command, exitCode: 2, color: true),
+        contains('(exit 2)'),
+      );
+    });
+
+    test('announceCommandStart / End write to the sink', () {
+      final sink = StringBuffer();
+      const command = ['printenv', 'RIPPLE_PACKAGE_NAME'];
+
+      announceCommandStart(command, sink: sink, forceColor: false);
+      announceCommandEnd(
+        command,
+        exitCode: 0,
+        sink: sink,
+        forceColor: false,
+      );
+
+      expect(
+        sink.toString(),
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME\n'
+        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)\n',
+      );
+    });
+
+    test('announceCommand inserts a newline when mid-line and ensure is on',
+        () {
+      terminalLineState.atLineStart = false;
+      final sink = StringBuffer();
+
+      announceCommandStart(
+        const ['pwd'],
+        sink: sink,
+        forceColor: false,
+        forceEnsureLineStart: true,
+      );
+
+      expect(sink.toString(), '\n[ripple] \$ pwd\n');
+      expect(terminalLineState.atLineStart, isTrue);
+    });
+  });
+
   group('substituteRippleVars', () {
     const vars = {
       rippleRootPathEnvVar: '/repo',

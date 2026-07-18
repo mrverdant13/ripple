@@ -241,6 +241,107 @@ void announcePackageScopeEnd(
   );
 }
 
+/// Formats [command] as a shell-like argv line for banners.
+///
+/// Arguments that are empty or contain whitespace / shell metacharacters are
+/// single-quoted (with embedded `'` escaped as `'\''`).
+String formatCommandLine(List<String> command) {
+  return command.map(_quoteCommandArg).join(' ');
+}
+
+String _quoteCommandArg(String arg) {
+  if (arg.isEmpty) {
+    return "''";
+  }
+  if (_safeCommandArg.hasMatch(arg)) {
+    return arg;
+  }
+  return "'${arg.replaceAll("'", "'\\''")}'";
+}
+
+/// Characters that are safe unquoted in a display-only shell-like argv line.
+final _safeCommandArg = RegExp(r'^[A-Za-z0-9_./:=+@%,-]+$');
+
+/// Formats the start-of-command banner line (no trailing newline).
+String formatCommandStart(
+  List<String> command, {
+  required bool color,
+}) {
+  final body = '[ripple] \$ ${formatCommandLine(command)}';
+  if (!color) {
+    return body;
+  }
+  return '$_ansiBold$_ansiCyan$body$_ansiReset';
+}
+
+/// Formats the end-of-command banner line (no trailing newline).
+String formatCommandEnd(
+  List<String> command, {
+  required int exitCode,
+  required bool color,
+}) {
+  final body = '[ripple] \$ ${formatCommandLine(command)}  (exit $exitCode)';
+  if (!color) {
+    return body;
+  }
+  final tone = exitCode == 0 ? _ansiGreen : _ansiRed;
+  return '$_ansiBold$tone$body$_ansiReset';
+}
+
+/// Writes the start banner for a single command invocation.
+///
+/// Printed to [sink] (stderr by default) immediately before [runProcess] so
+/// users can match each command to its following child output.
+void announceCommandStart(
+  List<String> command, {
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatCommandStart(command, color: color),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
+/// Writes the end banner for a single command invocation, including [exitCode].
+void announceCommandEnd(
+  List<String> command, {
+  required int exitCode,
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatCommandEnd(command, exitCode: exitCode, color: color),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
 /// Substitutes `$RIPPLE_*` / `${RIPPLE_*}` placeholders in [command] args.
 ///
 /// Only the known Ripple variables present in [vars] are replaced. Unknown
