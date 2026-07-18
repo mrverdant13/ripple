@@ -57,11 +57,17 @@ void main() {
       expect(stdoutLines(result), [p.normalize(fixtureRoot)]);
     });
 
-    test('run: script does not announce a package scope', () async {
+    test('run: script announces command banners without package scope',
+        () async {
       final result = await runRipple(['run', 'root.pwd']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(result.stderr, isNot(contains('[ripple]')));
+      expect(stderrLines(result), [
+        '[ripple] \$ pwd',
+        '[ripple] \$ pwd  (exit 0)',
+      ]);
+      expect(result.stderr, isNot(contains('▶')));
+      expect(result.stderr, isNot(contains('■')));
     });
 
     test('run: script sets RIPPLE_ROOT_PATH without package vars', () async {
@@ -114,6 +120,12 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(result.stdout, 'first-second');
+      expect(stderrLines(result), [
+        '[ripple] \$ printf %s first-',
+        '[ripple] \$ printf %s first-  (exit 0)',
+        '[ripple] \$ printf %s second',
+        '[ripple] \$ printf %s second  (exit 0)',
+      ]);
     });
 
     test('run: multi-step script stops after the first failure', () async {
@@ -122,6 +134,10 @@ void main() {
       expect(result.exitCode, 7);
       expect(result.stdout, 'before-');
       expect(result.stdout, isNot(contains('after')));
+      expect(stderrLines(result), [
+        '[ripple] \$ sh -c \'printf %s before-; exit 7\'',
+        '[ripple] \$ sh -c \'printf %s before-; exit 7\'  (exit 7)',
+      ]);
     });
 
     test('run: script rejects package filters', () async {
@@ -161,7 +177,7 @@ void main() {
     });
 
     test(
-      'exec: multi-step script announces begin/end once per package',
+      'exec: multi-step script announces package and per-step command banners',
       () async {
         final result = await runRipple([
           'run',
@@ -173,8 +189,16 @@ void main() {
         expect(result.exitCode, 0, reason: result.stderr as String);
         expect(stderrLines(result), [
           '[ripple] ▶ packages/core',
+          '[ripple] \$ printf %s core-',
+          '[ripple] \$ printf %s core-  (exit 0)',
+          '[ripple] \$ printf %s step2',
+          '[ripple] \$ printf %s step2  (exit 0)',
           '[ripple] ■ packages/core  (exit 0)',
           '[ripple] ▶ packages/ui',
+          '[ripple] \$ printf %s ui-',
+          '[ripple] \$ printf %s ui-  (exit 0)',
+          '[ripple] \$ printf %s step2',
+          '[ripple] \$ printf %s step2  (exit 0)',
           '[ripple] ■ packages/ui  (exit 0)',
         ]);
         expect(result.stdout, 'core-step2ui-step2');
@@ -192,8 +216,18 @@ void main() {
       expect(result.exitCode, 5);
       expect(stderrLines(result), [
         '[ripple] ▶ packages/core',
+        '[ripple] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
+            'then exit 5; fi\'',
+        '[ripple] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
+            'then exit 5; fi\'  (exit 5)',
         '[ripple] ■ packages/core  (exit 5)',
         '[ripple] ▶ packages/ui',
+        '[ripple] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
+            'then exit 5; fi\'',
+        '[ripple] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
+            'then exit 5; fi\'  (exit 0)',
+        '[ripple] \$ printf %s should-not-run',
+        '[ripple] \$ printf %s should-not-run  (exit 0)',
         '[ripple] ■ packages/ui  (exit 0)',
       ]);
     });
