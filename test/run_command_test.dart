@@ -41,12 +41,27 @@ void main() {
     return const LineSplitter().convert(text);
   }
 
+  List<String> stderrLines(ProcessResult result) {
+    final text = (result.stderr as String).trimRight();
+    if (text.isEmpty) {
+      return const [];
+    }
+    return const LineSplitter().convert(text);
+  }
+
   group('ripple run', () {
     test('run: script executes once at the config root', () async {
       final result = await runRipple(['run', 'root.pwd']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [p.normalize(fixtureRoot)]);
+    });
+
+    test('run: script does not announce a package scope', () async {
+      final result = await runRipple(['run', 'root.pwd']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stderr, isNot(contains('[ripple]')));
     });
 
     test('run: script sets RIPPLE_ROOT_PATH without package vars', () async {
@@ -143,6 +158,44 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test(
+      'exec: multi-step script announces begin/end once per package',
+      () async {
+        final result = await runRipple([
+          'run',
+          'pkg.steps',
+          '--packages',
+          'core,ui',
+        ]);
+
+        expect(result.exitCode, 0, reason: result.stderr as String);
+        expect(stderrLines(result), [
+          '[ripple] ▶ packages/core',
+          '[ripple] ■ packages/core  (exit 0)',
+          '[ripple] ▶ packages/ui',
+          '[ripple] ■ packages/ui  (exit 0)',
+        ]);
+        expect(result.stdout, 'core-step2ui-step2');
+      },
+    );
+
+    test('exec: end banner uses the failed step exit code', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.steps.fail',
+        '--packages',
+        'core,ui',
+      ]);
+
+      expect(result.exitCode, 5);
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 5)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
     });
 
     test('exec: script injects RIPPLE_* environment variables', () async {

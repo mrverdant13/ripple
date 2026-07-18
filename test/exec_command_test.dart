@@ -41,6 +41,14 @@ void main() {
     return const LineSplitter().convert(text);
   }
 
+  List<String> stderrLines(ProcessResult result) {
+    final text = (result.stderr as String).trimRight();
+    if (text.isEmpty) {
+      return const [];
+    }
+    return const LineSplitter().convert(text);
+  }
+
   group('ripple exec', () {
     test('runs the command once per selected package', () async {
       final result = await runRipple([
@@ -54,6 +62,75 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test('announces begin/end package scope banners on stderr', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'core,ui',
+        '--',
+        'printenv',
+        'RIPPLE_PACKAGE_NAME',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 0)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
+      expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test('forwards stdin to the package command', () async {
+      final process = await Process.start(
+        Platform.resolvedExecutable,
+        [
+          '--packages=$packageConfig',
+          rippleScript,
+          'exec',
+          '--packages',
+          'ui',
+          '--',
+          'sh',
+          '-c',
+          'IFS= read -r line; printf %s "\$line"',
+        ],
+        workingDirectory: fixtureRoot,
+        environment: Platform.environment,
+        includeParentEnvironment: false,
+      );
+      process.stdin.writeln('from-stdin');
+      await process.stdin.close();
+
+      final stdoutText = await utf8.decodeStream(process.stdout);
+      final stderrText = await utf8.decodeStream(process.stderr);
+      final exitCode = await process.exitCode;
+
+      expect(exitCode, 0, reason: stderrText);
+      expect(stdoutText, 'from-stdin');
+    });
+
+    test('end banner reports non-zero package exit codes', () async {
+      final result = await runRipple([
+        'exec',
+        '--packages',
+        'core,ui',
+        '--',
+        'sh',
+        '-c',
+        'if [ "\$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi',
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(stderrLines(result), [
+        '[ripple] ▶ packages/core',
+        '[ripple] ■ packages/core  (exit 3)',
+        '[ripple] ▶ packages/ui',
+        '[ripple] ■ packages/ui  (exit 0)',
+      ]);
     });
 
     test('sets cwd to the package path', () async {

@@ -112,6 +112,7 @@ class ExecCommand extends RippleCommand {
     var firstFailure = 0;
 
     for (final package in filtered) {
+      announcePackageScopeStart(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,
@@ -122,6 +123,7 @@ class ExecCommand extends RippleCommand {
         workingDirectory: package.path,
         environment: vars,
       );
+      announcePackageScopeEnd(package, exitCode: result.exitCode);
 
       if (result.exitCode != 0) {
         firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
