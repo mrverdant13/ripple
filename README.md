@@ -200,6 +200,10 @@ config-not-found error.
 Run an ad-hoc command **once per matching package**, sequentially, with cwd set
 to each package directory. Pass the executable and its arguments after `--`.
 
+Before each package's command, Ripple prints a stderr banner with that
+package's relative path (same form as [`ripple list`](#ripple-list)), for
+example `[ripple] packages/core`.
+
 ```bash
 ripple exec -- dart analyze .
 ripple exec --group libs -- dart test
@@ -238,7 +242,8 @@ Behavior depends on the script kind:
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
   Script-declared `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`. Package path/name vars are set in addition to
-  `RIPPLE_ROOT_PATH`.
+  `RIPPLE_ROOT_PATH`. One stderr package-scope banner is printed per package
+  before its steps (not once per step).
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 

@@ -168,6 +168,8 @@ Prioritize coverage for:
 - Multi-step `run:` / `exec:` lists (sequential fail-fast; all steps per package)
 - Rejection of unquoted `&&` in string commands
 - Fail-fast on ad-hoc `exec` and `exec:` scripts
+- Package-scope stderr banners for `exec` / `exec:` (once per package; not for
+  `run:` scripts)
 - Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
 
 ---
