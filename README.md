@@ -200,9 +200,18 @@ config-not-found error.
 Run an ad-hoc command **once per matching package**, sequentially, with cwd set
 to each package directory. Pass the executable and its arguments after `--`.
 
-Before each package's command, Ripple prints a stderr banner with that
-package's relative path (same form as [`ripple list`](#ripple-list)), for
-example `[ripple] packages/core`.
+Each package is wrapped in begin/end stderr banners using that package's
+relative path (same form as [`ripple list`](#ripple-list)):
+
+```text
+[ripple] ▶ packages/core
+… command output …
+[ripple] ■ packages/core  (exit 0)
+```
+
+On an interactive terminal, banners are colorized (cyan start; green or red
+end by exit code). Color is disabled when stderr is not a TTY, when
+`NO_COLOR` is set, or when `TERM=dumb`.
 
 ```bash
 ripple exec -- dart analyze .
@@ -242,8 +251,9 @@ Behavior depends on the script kind:
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
   Script-declared `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`. Package path/name vars are set in addition to
-  `RIPPLE_ROOT_PATH`. One stderr package-scope banner is printed per package
-  before its steps (not once per step).
+  `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners are printed once
+  per package (not once per step); the end banner reports that package's
+  exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
