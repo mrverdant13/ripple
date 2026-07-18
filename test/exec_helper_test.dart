@@ -135,6 +135,10 @@ void main() {
         isFalse,
       );
       expect(
+        packageScopeBannersUseColor(environment: const {}),
+        isFalse,
+      );
+      expect(
         packageScopeBannersUseColor(forceColor: true, hasTerminal: false),
         isTrue,
       );
@@ -160,6 +164,47 @@ void main() {
         '[ripple] ▶ packages/ui\n'
         '[ripple] ■ packages/ui  (exit 0)\n',
       );
+    });
+
+    test('resolveBannerHasTerminal defaults non-Stdout sinks to false', () {
+      expect(resolveBannerHasTerminal(StringBuffer()), isFalse);
+      expect(
+        resolveBannerHasTerminal(StringBuffer(), hasTerminal: true),
+        isTrue,
+      );
+      expect(resolveBannerHasTerminal(stderr), stderr.hasTerminal);
+      expect(
+        resolveBannerHasTerminal(stderr, hasTerminal: false),
+        isFalse,
+      );
+    });
+
+    test('custom sinks stay plain unless forceColor is set', () {
+      final plain = StringBuffer();
+      announcePackageScopeStart(package, sink: plain);
+      announcePackageScopeEnd(package, exitCode: 3, sink: plain);
+      expect(plain.toString(), isNot(contains('\x1B[')));
+      expect(
+        plain.toString(),
+        '[ripple] ▶ packages/ui\n'
+        '[ripple] ■ packages/ui  (exit 3)\n',
+      );
+
+      final colored = StringBuffer();
+      announcePackageScopeStart(
+        package,
+        sink: colored,
+        forceColor: true,
+      );
+      announcePackageScopeEnd(
+        package,
+        exitCode: 3,
+        sink: colored,
+        forceColor: true,
+      );
+      expect(colored.toString(), contains('\x1B['));
+      expect(colored.toString(), contains('[ripple] ▶ packages/ui'));
+      expect(colored.toString(), contains('(exit 3)'));
     });
 
     test('shouldEnsureBannerLineStart is only for shared TTYs by default', () {
