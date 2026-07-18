@@ -32,12 +32,46 @@ void main() {
     });
   });
 
+  group('TerminalLineState', () {
+    test('observeBytes treats trailing LF or CR as line start', () {
+      final state = TerminalLineState();
+
+      state.observeBytes('core-'.codeUnits);
+      expect(state.atLineStart, isFalse);
+
+      state.observeBytes('\n'.codeUnits);
+      expect(state.atLineStart, isTrue);
+
+      state.observeBytes('x'.codeUnits);
+      expect(state.atLineStart, isFalse);
+      state.observeBytes('\r'.codeUnits);
+      expect(state.atLineStart, isTrue);
+    });
+
+    test('ensureLineStart inserts a newline only when mid-line', () {
+      final state = TerminalLineState();
+      final sink = StringBuffer();
+
+      state.ensureLineStart(sink);
+      expect(sink.toString(), isEmpty);
+
+      state.atLineStart = false;
+      state.ensureLineStart(sink);
+      expect(sink.toString(), '\n');
+      expect(state.atLineStart, isTrue);
+    });
+  });
+
   group('package scope banners', () {
     const package = RipplePackage(
       name: 'ui',
       path: '/repo/packages/ui',
       relativePath: 'packages/ui',
     );
+
+    tearDown(() {
+      terminalLineState.atLineStart = true;
+    });
 
     test('formatPackageScopeStart / End use plain text without color', () {
       expect(
@@ -126,6 +160,56 @@ void main() {
         '[ripple] ▶ packages/ui\n'
         '[ripple] ■ packages/ui  (exit 0)\n',
       );
+    });
+
+    test('shouldEnsureBannerLineStart is only for shared TTYs by default', () {
+      final sink = StringBuffer();
+      expect(
+        shouldEnsureBannerLineStart(
+          sink,
+          stdoutIsTerminal: true,
+          stderrIsTerminal: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldEnsureBannerLineStart(
+          stderr,
+          stdoutIsTerminal: true,
+          stderrIsTerminal: true,
+        ),
+        isTrue,
+      );
+      expect(
+        shouldEnsureBannerLineStart(
+          stderr,
+          stdoutIsTerminal: false,
+          stderrIsTerminal: true,
+        ),
+        isFalse,
+      );
+      expect(
+        shouldEnsureBannerLineStart(sink, forceEnsureLineStart: true),
+        isTrue,
+      );
+    });
+
+    test('announce inserts a newline when mid-line and ensure is on', () {
+      terminalLineState.atLineStart = false;
+      final sink = StringBuffer();
+
+      announcePackageScopeStart(
+        package,
+        sink: sink,
+        forceColor: false,
+        forceEnsureLineStart: true,
+      );
+
+      expect(
+        sink.toString(),
+        '\n[ripple] ▶ packages/ui\n',
+      );
+      expect(terminalLineState.atLineStart, isTrue);
     });
   });
 
