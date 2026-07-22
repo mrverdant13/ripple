@@ -379,5 +379,46 @@ void main() {
         ),
       );
     });
+
+    test('invalid match glob fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: const PackageFilterCriteria(match: [
+            ['['],
+          ]),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('Invalid package-name glob "["'),
+              isNot(contains('FormatException')),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('invalid noMatch glob fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: const PackageFilterCriteria(noMatch: ['{a']),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            contains('Invalid package-name glob "{a"'),
+          ),
+        ),
+      );
+    });
   });
 }

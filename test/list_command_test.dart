@@ -147,6 +147,14 @@ void main() {
       expect(result.stderr, contains('Unknown package group "missing"'));
     });
 
+    test('invalid --match glob fails with a clear error', () async {
+      final result = await runRipple(['list', '--match', '[']);
+
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('Invalid package-name glob "["'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
+    });
+
     test('outside any ripple.yaml ancestry fails clearly', () async {
       final temp = Directory.systemTemp.createTempSync('ripple_list_');
       addTearDown(() {

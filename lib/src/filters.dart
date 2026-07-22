@@ -233,8 +233,9 @@ List<String>? resolvePackageNameFilter(
 ///
 /// Group membership is resolved via [groupMembership] when provided; otherwise
 /// [resolvePackageGroups] is used. Throws [RippleConfigException] when a
-/// requested group name is not defined in [config], or when a provided
-/// [groupMembership] map omits a requested group.
+/// requested group name is not defined in [config], when a provided
+/// [groupMembership] map omits a requested group, or when a [match] /
+/// [noMatch] pattern is not a valid glob.
 ///
 /// Order of [packages] is preserved.
 List<RipplePackage> filterPackages(
@@ -327,7 +328,15 @@ List<RipplePackage> filterPackages(
 /// Context for matching package-name globs (POSIX-style, no filesystem walk).
 final _nameMatchContext = p.Context(style: p.Style.posix);
 
-Glob _nameGlob(String pattern) => Glob(pattern, context: _nameMatchContext);
+Glob _nameGlob(String pattern) {
+  try {
+    return Glob(pattern, context: _nameMatchContext);
+  } on FormatException catch (error) {
+    throw RippleConfigException(
+      'Invalid package-name glob "$pattern": ${error.message}',
+    );
+  }
+}
 
 bool _matchesAllNameGroups(String name, List<List<Glob>> groups) {
   for (final group in groups) {
