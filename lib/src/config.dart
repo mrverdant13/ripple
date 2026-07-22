@@ -43,6 +43,8 @@ class ScriptFilters {
     this.fileExists = const [],
     this.dependsOn = const [],
     this.group,
+    this.match = const [],
+    this.noMatch = const [],
   });
 
   /// Relative directory paths that must exist under each package root.
@@ -56,6 +58,12 @@ class ScriptFilters {
 
   /// Named group from `packages.groups`; package must be a member.
   final String? group;
+
+  /// Package-name globs; package must match at least one when non-empty.
+  final List<String> match;
+
+  /// Package-name globs; package must match none when non-empty.
+  final List<String> noMatch;
 }
 
 /// A named script from the `scripts` map in `ripple.yaml`.
@@ -512,6 +520,8 @@ ScriptFilters? _filtersFromValue(
     fileExists: _stringList(map, 'fileExists', 'ScriptFilters'),
     dependsOn: _stringList(map, 'dependsOn', 'ScriptFilters'),
     group: _optionalString(map, 'group', 'ScriptFilters'),
+    match: _stringList(map, 'match', 'ScriptFilters'),
+    noMatch: _stringList(map, 'noMatch', 'ScriptFilters'),
   );
 }
 

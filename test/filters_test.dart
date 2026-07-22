@@ -184,6 +184,28 @@ void main() {
       expect(names(filtered), ['core']);
     });
 
+    test('fromScriptFilters maps match and noMatch name globs', () {
+      final criteria = PackageFilterCriteria.fromScriptFilters(
+        const ScriptFilters(
+          match: ['*_pkg', 'core'],
+          noMatch: ['ui'],
+        ),
+      );
+
+      expect(criteria.match, [
+        ['*_pkg', 'core'],
+      ]);
+      expect(criteria.noMatch, ['ui']);
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria,
+        groupMembership: groups,
+      );
+      expect(names(filtered), ['core', 'tool_pkg']);
+    });
+
     test('match and noMatch compose with other filters', () {
       final filtered = filterPackages(
         packages,

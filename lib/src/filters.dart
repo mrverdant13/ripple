@@ -93,6 +93,10 @@ class PackageFilterCriteria {
       groups: filters.group == null
           ? const []
           : List<String>.unmodifiable([filters.group!]),
+      match: filters.match.isEmpty
+          ? const []
+          : [List<String>.unmodifiable(filters.match)],
+      noMatch: filters.noMatch,
       packageNames: names,
     );
   }
