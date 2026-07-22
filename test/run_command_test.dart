@@ -153,6 +153,19 @@ void main() {
       expect(result.stderr, contains('does not accept package filters'));
     });
 
+    test('run: script rejects --match filters', () async {
+      final result = await runRipple([
+        'run',
+        'root.pwd',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('does not accept package filters'));
+      expect(result.stderr, contains('--match'));
+    });
+
     test('run: script rejects RIPPLE_PACKAGES selection', () async {
       final result = await runRipple(
         ['run', 'root.pwd'],
@@ -370,6 +383,8 @@ void main() {
       expect(help, contains('--fail-fast'));
       expect(help, contains('--group'));
       expect(help, contains('--packages'));
+      expect(help, contains('--match'));
+      expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));

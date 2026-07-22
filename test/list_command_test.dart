@@ -67,6 +67,32 @@ void main() {
       expect(stdoutLines(result), ['packages/ui', 'tool']);
     });
 
+    test('--match selects by package-name globs', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        '*_pkg',
+        '--match',
+        'core',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core', 'tool']);
+    });
+
+    test('--no-match excludes by package-name globs', () async {
+      final result = await runRipple([
+        'list',
+        '--no-match',
+        'ui',
+        '--no-match',
+        '*_pkg',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
     test('--dir-exists narrows the printed set', () async {
       final result = await runRipple(['list', '--dir-exists', 'test']);
 
@@ -145,6 +171,8 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--group'));
       expect(help, contains('--packages'));
+      expect(help, contains('--match'));
+      expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));

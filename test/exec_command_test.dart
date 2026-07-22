@@ -64,6 +64,20 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
+    test('--match selects packages by name glob', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'u*',
+        '--',
+        'printenv',
+        'RIPPLE_PACKAGE_NAME',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['ui']);
+    });
+
     test('announces package and command banners on stderr', () async {
       final result = await runRipple([
         'exec',
@@ -309,6 +323,8 @@ void main() {
       expect(help, contains('--fail-fast'));
       expect(help, contains('--group'));
       expect(help, contains('--packages'));
+      expect(help, contains('--match'));
+      expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));

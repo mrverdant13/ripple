@@ -34,6 +34,20 @@ class RunCommand extends RippleCommand {
         valueHelp: 'a,b',
       )
       ..addMultiOption(
+        matchOptionName,
+        help: 'Only packages whose name matches this glob. May be passed '
+            'multiple times (OR). Intersected with script filters and other '
+            'filters. Valid only for exec: scripts.',
+        valueHelp: 'glob',
+      )
+      ..addMultiOption(
+        noMatchOptionName,
+        help: 'Exclude packages whose name matches this glob. May be passed '
+            'multiple times (OR). Negation of --$matchOptionName. Valid only '
+            'for exec: scripts.',
+        valueHelp: 'glob',
+      )
+      ..addMultiOption(
         dirExistsOptionName,
         help: 'Only packages that contain this relative directory. '
             'May be passed multiple times (AND). Valid only for exec: scripts.',
@@ -62,6 +76,12 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--packages`.
   static const packagesOptionName = 'packages';
+
+  /// Option name for `--match`.
+  static const matchOptionName = 'match';
+
+  /// Option name for `--no-match`.
+  static const noMatchOptionName = 'no-match';
 
   /// Option name for `--dir-exists`.
   static const dirExistsOptionName = 'dir-exists';
@@ -106,7 +126,9 @@ class RunCommand extends RippleCommand {
     final script = resolveScript(config, scriptName);
 
     final group = argResults!.option(groupOptionName);
-    final cliCriteria = PackageFilterCriteria(
+    final cliCriteria = PackageFilterCriteria.fromNameGlobs(
+      match: argResults!.multiOption(matchOptionName),
+      noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
@@ -121,8 +143,8 @@ class RunCommand extends RippleCommand {
         usageException(
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
-          'Remove --group, --packages, --dir-exists, --file-exists, '
-          '--depends-on, and unset $ripplePackagesEnvVar.',
+          'Remove --group, --packages, --match, --no-match, --dir-exists, '
+          '--file-exists, --depends-on, and unset $ripplePackagesEnvVar.',
         );
       }
 

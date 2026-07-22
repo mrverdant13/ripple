@@ -31,6 +31,18 @@ class ExecCommand extends RippleCommand {
         valueHelp: 'a,b',
       )
       ..addMultiOption(
+        matchOptionName,
+        help: 'Only packages whose name matches this glob. May be passed '
+            'multiple times (OR). Intersected with other filters.',
+        valueHelp: 'glob',
+      )
+      ..addMultiOption(
+        noMatchOptionName,
+        help: 'Exclude packages whose name matches this glob. May be passed '
+            'multiple times (OR). Negation of --$matchOptionName.',
+        valueHelp: 'glob',
+      )
+      ..addMultiOption(
         dirExistsOptionName,
         help: 'Only packages that contain this relative directory. '
             'May be passed multiple times (AND).',
@@ -59,6 +71,12 @@ class ExecCommand extends RippleCommand {
 
   /// Option name for `--packages`.
   static const packagesOptionName = 'packages';
+
+  /// Option name for `--match`.
+  static const matchOptionName = 'match';
+
+  /// Option name for `--no-match`.
+  static const noMatchOptionName = 'no-match';
 
   /// Option name for `--dir-exists`.
   static const dirExistsOptionName = 'dir-exists';
@@ -92,7 +110,9 @@ class ExecCommand extends RippleCommand {
     final config = loadRippleConfig();
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
-    final criteria = PackageFilterCriteria(
+    final criteria = PackageFilterCriteria.fromNameGlobs(
+      match: argResults!.multiOption(matchOptionName),
+      noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
