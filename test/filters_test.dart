@@ -95,6 +95,39 @@ void main() {
       expect(names(filtered), ['ui', 'tool_pkg']);
     });
 
+    test('match selects by package-name globs (OR)', () {
+      final exact = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(match: [
+          ['ui'],
+        ]),
+        groupMembership: groups,
+      );
+      expect(names(exact), ['ui']);
+
+      final glob = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(match: [
+          ['*_pkg', 'core'],
+        ]),
+        groupMembership: groups,
+      );
+      expect(names(glob), ['core', 'tool_pkg']);
+    });
+
+    test('noMatch excludes by package-name globs', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(noMatch: ['*_pkg', 'ui']),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
     test('empty criteria returns the full discovered set', () {
       final filtered = filterPackages(
         packages,
@@ -148,6 +181,49 @@ void main() {
         groupMembership: groups,
       );
 
+      expect(names(filtered), ['core']);
+    });
+
+    test('match and noMatch compose with other filters', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(
+          groups: ['libs'],
+          match: [
+            ['*'],
+          ],
+          noMatch: ['ui'],
+        ),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
+    test('intersect ANDs match OR-groups and concatenates noMatch', () {
+      final left = PackageFilterCriteria.fromNameGlobs(
+        match: ['*'],
+        noMatch: ['tool_pkg'],
+      );
+      final right = PackageFilterCriteria.fromNameGlobs(
+        match: ['*ore'],
+        noMatch: ['ui'],
+      );
+      final merged = left.intersect(right);
+
+      expect(merged.match, [
+        ['*'],
+        ['*ore'],
+      ]);
+      expect(merged.noMatch, ['tool_pkg', 'ui']);
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: merged,
+        groupMembership: groups,
+      );
       expect(names(filtered), ['core']);
     });
   });

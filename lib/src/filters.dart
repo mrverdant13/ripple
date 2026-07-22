@@ -3,6 +3,7 @@ library;
 
 import 'dart:io';
 
+import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
 import 'package:pubspec_parse/pubspec_parse.dart';
 
@@ -11,34 +12,71 @@ import 'discovery.dart';
 
 /// Environment variable for comma-separated package name selection.
 ///
-/// When set, names are intersected with `--packages` (if any) and with every
-/// other active filter criterion.
+/// When set, names are intersected with `--packages` (if any),
+/// [PackageFilterCriteria.match] / [PackageFilterCriteria.noMatch] globs, and
+/// every other active filter criterion. Values are exact package names, not
+/// globs.
 const ripplePackagesEnvVar = 'RIPPLE_PACKAGES';
 
 /// Criteria used to narrow a discovered package list.
 ///
 /// All non-empty criteria are applied with **intersection** semantics: a
 /// package must satisfy every active criterion. Within a single list such as
-/// [dirExists], every entry must match (AND). Within [packageNames], a package
-/// matches if its name is one of the selected names (OR).
+/// [dirExists], every entry must match (AND). Within one [match] OR-group, a
+/// package matches if its name matches **any** glob; when [match] holds
+/// multiple groups (after [intersect]), the package must satisfy every group.
+/// Within [noMatch], a package is excluded if its name matches **any** glob.
+/// Within [packageNames], a package matches if its name is one of the selected
+/// names (OR / exact).
 class PackageFilterCriteria {
   /// Creates filter criteria.
   ///
-  /// [packageNames] is `null` when no name filter is active. An empty list
-  /// means a name filter is active and matches no packages (for example after
-  /// an empty intersection of `--packages` and `RIPPLE_PACKAGES`).
+  /// [match] is a list of OR-groups of package-name globs. Pass a single group
+  /// for one filter source, e.g. `match: [['ui', '*_pkg']]`. [intersect]
+  /// concatenates groups so each source's OR-list must be satisfied (AND).
+  ///
+  /// [packageNames] is `null` when no exact name allowlist is active. An empty
+  /// list means an allowlist is active and matches no packages (for example
+  /// after an empty intersection of `--packages` and `RIPPLE_PACKAGES`).
   const PackageFilterCriteria({
     this.dirExists = const [],
     this.fileExists = const [],
     this.dependsOn = const [],
     this.groups = const [],
+    this.match = const [],
+    this.noMatch = const [],
     this.packageNames,
   });
 
+  /// Builds criteria from a single filter source's name-glob OR-list.
+  ///
+  /// Empty [match] / [noMatch] leave those criteria inactive. Non-empty
+  /// [match] becomes one OR-group.
+  factory PackageFilterCriteria.fromNameGlobs({
+    List<String> match = const [],
+    List<String> noMatch = const [],
+    List<String> dirExists = const [],
+    List<String> fileExists = const [],
+    List<String> dependsOn = const [],
+    List<String> groups = const [],
+    List<String>? packageNames,
+  }) {
+    return PackageFilterCriteria(
+      dirExists: dirExists,
+      fileExists: fileExists,
+      dependsOn: dependsOn,
+      groups: groups,
+      match: match.isEmpty ? const [] : [List<String>.unmodifiable(match)],
+      noMatch: noMatch,
+      packageNames: packageNames,
+    );
+  }
+
   /// Builds criteria from script-declared [filters].
   ///
-  /// Optional [packageNames] are applied as an additional name intersection.
-  /// An empty [packageNames] iterable leaves name selection unset.
+  /// Optional [packageNames] are applied as an additional exact-name
+  /// intersection. An empty [packageNames] iterable leaves name selection
+  /// unset.
   factory PackageFilterCriteria.fromScriptFilters(
     ScriptFilters? filters, {
     Iterable<String> packageNames = const [],
@@ -73,7 +111,15 @@ class PackageFilterCriteria {
   /// every listed group (intersection when more than one is set).
   final List<String> groups;
 
-  /// Selected package names, or `null` when no name filter is active.
+  /// Package-name glob OR-groups. A package must match every group; within a
+  /// group, matching any pattern is enough.
+  final List<List<String>> match;
+
+  /// Package-name globs; when non-empty, [RipplePackage.name] must not match
+  /// any pattern.
+  final List<String> noMatch;
+
+  /// Exact selected package names, or `null` when no allowlist is active.
   ///
   /// When non-null (including empty), [RipplePackage.name] must be one of
   /// these names. An empty list matches no packages.
@@ -85,6 +131,8 @@ class PackageFilterCriteria {
       fileExists.isEmpty &&
       dependsOn.isEmpty &&
       groups.isEmpty &&
+      match.isEmpty &&
+      noMatch.isEmpty &&
       packageNames == null;
 
   /// Returns a copy with [packageNames] replaced by the intersection of the
@@ -111,14 +159,18 @@ class PackageFilterCriteria {
       fileExists: fileExists,
       dependsOn: dependsOn,
       groups: groups,
+      match: match,
+      noMatch: noMatch,
       packageNames: selected,
     );
   }
 
   /// Combines this criteria with [other].
   ///
-  /// Path and dependency lists (`dirExists`, `fileExists`, `dependsOn`) and
-  /// [groups] are concatenated so every entry must match (AND). Name
+  /// Path and dependency lists (`dirExists`, `fileExists`, `dependsOn`),
+  /// [groups], and [noMatch] are concatenated so every list entry must be
+  /// satisfied under that criterion's rules. [match] OR-groups are
+  /// concatenated so every group must match (AND across sources). Exact name
   /// selections intersect when either side has an active [packageNames]
   /// filter (`null` means unset).
   PackageFilterCriteria intersect(PackageFilterCriteria other) {
@@ -128,6 +180,8 @@ class PackageFilterCriteria {
           List<String>.unmodifiable([...fileExists, ...other.fileExists]),
       dependsOn: List<String>.unmodifiable([...dependsOn, ...other.dependsOn]),
       groups: List<String>.unmodifiable([...groups, ...other.groups]),
+      match: List<List<String>>.unmodifiable([...match, ...other.match]),
+      noMatch: List<String>.unmodifiable([...noMatch, ...other.noMatch]),
       packageNames: resolvePackageNameFilter(packageNames, other.packageNames),
     );
   }
@@ -236,9 +290,23 @@ List<RipplePackage> filterPackages(
 
   final selectedNames = criteria.packageNames;
   final nameSet = selectedNames?.toSet();
+  final matchGroups = [
+    for (final group in criteria.match)
+      [for (final pattern in group) _nameGlob(pattern)],
+  ];
+  final noMatchGlobs = [
+    for (final pattern in criteria.noMatch) _nameGlob(pattern),
+  ];
 
   final filtered = <RipplePackage>[];
   for (final package in packages) {
+    if (!_matchesAllNameGroups(package.name, matchGroups)) {
+      continue;
+    }
+    if (noMatchGlobs.isNotEmpty &&
+        _matchesAnyName(package.name, noMatchGlobs)) {
+      continue;
+    }
     if (nameSet != null && !nameSet.contains(package.name)) {
       continue;
     }
@@ -256,6 +324,32 @@ List<RipplePackage> filterPackages(
   }
 
   return List<RipplePackage>.unmodifiable(filtered);
+}
+
+/// Context for matching package-name globs (POSIX-style, no filesystem walk).
+final _nameMatchContext = p.Context(style: p.Style.posix);
+
+Glob _nameGlob(String pattern) => Glob(pattern, context: _nameMatchContext);
+
+bool _matchesAllNameGroups(String name, List<List<Glob>> groups) {
+  for (final group in groups) {
+    if (group.isEmpty) {
+      continue;
+    }
+    if (!_matchesAnyName(name, group)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _matchesAnyName(String name, List<Glob> globs) {
+  for (final glob in globs) {
+    if (glob.matches(name)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool _matchesPathFilters(
