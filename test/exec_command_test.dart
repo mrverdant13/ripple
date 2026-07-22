@@ -53,8 +53,10 @@ void main() {
     test('runs the command once per selected package', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'printenv',
         'RIPPLE_PACKAGE_NAME',
@@ -81,8 +83,10 @@ void main() {
     test('announces package and command banners on stderr', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'printenv',
         'RIPPLE_PACKAGE_NAME',
@@ -109,7 +113,7 @@ void main() {
           '--packages=$packageConfig',
           rippleScript,
           'exec',
-          '--packages',
+          '--match',
           'ui',
           '--',
           'sh',
@@ -134,8 +138,10 @@ void main() {
     test('end banner reports non-zero package exit codes', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'sh',
         '-c',
@@ -158,7 +164,7 @@ void main() {
     test('sets cwd to the package path', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
+        '--match',
         'ui',
         '--',
         'pwd',
@@ -174,7 +180,7 @@ void main() {
     test('injects RIPPLE_* environment variables', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
+        '--match',
         'ui',
         '--',
         'sh',
@@ -196,7 +202,7 @@ void main() {
     test('substitutes RIPPLE_* placeholders in command args', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
+        '--match',
         'ui',
         '--',
         'printf',
@@ -225,8 +231,10 @@ void main() {
     test('without --fail-fast continues after failures', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'sh',
         '-c',
@@ -242,8 +250,10 @@ void main() {
       final result = await runRipple([
         'exec',
         '--fail-fast',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'sh',
         '-c',
@@ -266,7 +276,7 @@ void main() {
     test('missing executable fails cleanly without a stack trace', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
+        '--match',
         'ui',
         '--',
         'ripple-exec-missing-binary-that-does-not-exist',
@@ -286,8 +296,10 @@ void main() {
         final result = await runRipple([
           'exec',
           '--fail-fast',
-          '--packages',
-          'core,ui',
+          '--match',
+          'core',
+          '--match',
+          'ui',
           '--',
           'ripple-exec-missing-binary-that-does-not-exist',
         ]);
@@ -301,8 +313,10 @@ void main() {
     test('without --fail-fast continues after ProcessException', () async {
       final result = await runRipple([
         'exec',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
         '--',
         'ripple-exec-missing-binary-that-does-not-exist',
       ]);
@@ -322,7 +336,6 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
       expect(help, contains('--group'));
-      expect(help, contains('--packages'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));

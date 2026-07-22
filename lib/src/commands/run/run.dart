@@ -26,13 +26,6 @@ class RunCommand extends RippleCommand {
             'packages.groups. Valid only for exec: scripts.',
         valueHelp: 'name',
       )
-      ..addOption(
-        packagesOptionName,
-        help: 'Comma-separated package names to include. Intersected with '
-            '$ripplePackagesEnvVar, script filters, and other filters. '
-            'Valid only for exec: scripts.',
-        valueHelp: 'a,b',
-      )
       ..addMultiOption(
         matchOptionName,
         help: 'Only packages whose name matches this glob. May be passed '
@@ -73,9 +66,6 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--group`.
   static const groupOptionName = 'group';
-
-  /// Option name for `--packages`.
-  static const packagesOptionName = 'packages';
 
   /// Option name for `--match`.
   static const matchOptionName = 'match';
@@ -134,7 +124,6 @@ class RunCommand extends RippleCommand {
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
     ).withPackageNameSelection(
-      packages: parsePackageNameList(argResults!.option(packagesOptionName)),
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 
@@ -143,8 +132,8 @@ class RunCommand extends RippleCommand {
         usageException(
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
-          'Remove --group, --packages, --match, --no-match, --dir-exists, '
-          '--file-exists, --depends-on, and unset $ripplePackagesEnvVar.',
+          'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
+          '--depends-on, and unset $ripplePackagesEnvVar.',
         );
       }
 

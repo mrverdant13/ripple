@@ -12,10 +12,9 @@ import 'discovery.dart';
 
 /// Environment variable for comma-separated package name selection.
 ///
-/// When set, names are intersected with `--packages` (if any),
-/// [PackageFilterCriteria.match] / [PackageFilterCriteria.noMatch] globs, and
-/// every other active filter criterion. Values are exact package names, not
-/// globs.
+/// When set, names are intersected with [PackageFilterCriteria.match] /
+/// [PackageFilterCriteria.noMatch] globs and every other active filter
+/// criterion. Values are exact package names, not globs.
 const ripplePackagesEnvVar = 'RIPPLE_PACKAGES';
 
 /// Criteria used to narrow a discovered package list.
@@ -37,7 +36,7 @@ class PackageFilterCriteria {
   ///
   /// [packageNames] is `null` when no exact name allowlist is active. An empty
   /// list means an allowlist is active and matches no packages (for example
-  /// after an empty intersection of `--packages` and `RIPPLE_PACKAGES`).
+  /// after an empty intersection involving `RIPPLE_PACKAGES`).
   const PackageFilterCriteria({
     this.dirExists = const [],
     this.fileExists = const [],
@@ -140,22 +139,18 @@ class PackageFilterCriteria {
       packageNames == null;
 
   /// Returns a copy with [packageNames] replaced by the intersection of the
-  /// current names (if any), [packages], and names parsed from
-  /// [ripplePackagesEnv].
+  /// current names (if any) and names parsed from [ripplePackagesEnv].
   ///
-  /// Empty [packages] / env values are ignored (they do not clear an existing
-  /// selection). An empty intersection yields an empty [packageNames] list
-  /// (match nothing), not `null`.
+  /// Empty env values are ignored (they do not clear an existing selection).
+  /// An empty intersection yields an empty [packageNames] list (match
+  /// nothing), not `null`.
   PackageFilterCriteria withPackageNameSelection({
-    Iterable<String>? packages,
     String? ripplePackagesEnv,
   }) {
-    final fromFlag = packages == null || packages.isEmpty ? null : packages;
     final fromEnvList = parsePackageNameList(ripplePackagesEnv);
     final fromEnv = fromEnvList.isEmpty ? null : fromEnvList;
     final selected = resolvePackageNameFilter(
       packageNames,
-      fromFlag,
       fromEnv,
     );
     return PackageFilterCriteria(
@@ -191,8 +186,7 @@ class PackageFilterCriteria {
   }
 }
 
-/// Parses a comma-separated package name list from `--packages` or
-/// [ripplePackagesEnvVar].
+/// Parses a comma-separated package name list from [ripplePackagesEnvVar].
 List<String> parsePackageNameList(String? value) {
   if (value == null) {
     return const [];

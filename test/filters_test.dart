@@ -266,11 +266,10 @@ void main() {
       expect(names(filtered), ['ui']);
     });
 
-    test('explicit package list intersects with RIPPLE_PACKAGES', () {
-      final criteria = const PackageFilterCriteria().withPackageNameSelection(
-        packages: ['core', 'ui'],
-        ripplePackagesEnv: 'ui,tool_pkg',
-      );
+    test('exact packageNames intersects with RIPPLE_PACKAGES', () {
+      final criteria = const PackageFilterCriteria(
+        packageNames: ['core', 'ui'],
+      ).withPackageNameSelection(ripplePackagesEnv: 'ui,tool_pkg');
 
       final filtered = filterPackages(
         packages,
@@ -283,10 +282,9 @@ void main() {
     });
 
     test('empty name-selection intersection matches no packages', () {
-      final criteria = const PackageFilterCriteria().withPackageNameSelection(
-        packages: ['core'],
-        ripplePackagesEnv: 'ui',
-      );
+      final criteria = const PackageFilterCriteria(
+        packageNames: ['core'],
+      ).withPackageNameSelection(ripplePackagesEnv: 'ui');
 
       expect(criteria.packageNames, isEmpty);
       expect(criteria.isEmpty, isFalse);
@@ -301,10 +299,11 @@ void main() {
       expect(filtered, isEmpty);
     });
 
-    test('explicit package list intersects with path filters', () {
+    test('exact packageNames intersects with path filters', () {
       final criteria = const PackageFilterCriteria(
         dirExists: ['lib'],
-      ).withPackageNameSelection(packages: ['core', 'tool_pkg']);
+        packageNames: ['core', 'tool_pkg'],
+      );
 
       final filtered = filterPackages(
         packages,

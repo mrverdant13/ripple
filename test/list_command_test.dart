@@ -60,8 +60,9 @@ void main() {
       expect(stdoutLines(result), ['packages/core', 'packages/ui']);
     });
 
-    test('--packages intersects by package name', () async {
-      final result = await runRipple(['list', '--packages', 'ui,tool_pkg']);
+    test('--match exact names select packages', () async {
+      final result =
+          await runRipple(['list', '--match', 'ui', '--match', 'tool_pkg']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['packages/ui', 'tool']);
@@ -119,8 +120,10 @@ void main() {
         'list',
         '--group',
         'libs',
-        '--packages',
-        'ui,tool_pkg',
+        '--match',
+        'ui',
+        '--match',
+        'tool_pkg',
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -170,7 +173,6 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       final help = result.stdout as String;
       expect(help, contains('--group'));
-      expect(help, contains('--packages'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));

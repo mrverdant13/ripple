@@ -18,12 +18,6 @@ class ListCommand extends RippleCommand {
             'packages.groups.',
         valueHelp: 'name',
       )
-      ..addOption(
-        packagesOptionName,
-        help: 'Comma-separated package names to include. Intersected with '
-            '$ripplePackagesEnvVar and other filters.',
-        valueHelp: 'a,b',
-      )
       ..addMultiOption(
         matchOptionName,
         help: 'Only packages whose name matches this glob. May be passed '
@@ -60,9 +54,6 @@ class ListCommand extends RippleCommand {
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
-  /// Option name for `--packages`.
-  static const packagesOptionName = 'packages';
-
   /// Option name for `--match`.
   static const matchOptionName = 'match';
 
@@ -98,7 +89,6 @@ class ListCommand extends RippleCommand {
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
     ).withPackageNameSelection(
-      packages: parsePackageNameList(argResults!.option(packagesOptionName)),
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 
