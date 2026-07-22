@@ -34,6 +34,11 @@ scripts:
       dependsOn:
         - test
       group: core
+      match:
+        - '*_api'
+        - core
+      noMatch:
+        - '*_test'
 ''';
 
       final config = parseRippleYaml(yaml, rootPath: '/tmp/demo');
@@ -59,6 +64,8 @@ scripts:
       expect(analyze.filters!.fileExists, ['pubspec.yaml']);
       expect(analyze.filters!.dependsOn, ['test']);
       expect(analyze.filters!.group, 'core');
+      expect(analyze.filters!.match, ['*_api', 'core']);
+      expect(analyze.filters!.noMatch, ['*_test']);
     });
 
     test('defaults missing packages and scripts to empty', () {

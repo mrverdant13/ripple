@@ -130,8 +130,8 @@ Each script must declare **exactly one** of `run:` or `exec:` (XOR):
 - **`run:`** — execute once with cwd = the Ripple root. Must not declare
   `filters`.
 - **`exec:`** — execute once per matching package with cwd = that package.
-  Optional `filters` may include `dirExists`, `fileExists`, `dependsOn`, and
-  `group`.
+  Optional `filters` may include `dirExists`, `fileExists`, `dependsOn`,
+  `group`, `match`, and `noMatch`.
 
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
@@ -156,7 +156,15 @@ scripts:
     exec: dart analyze --fatal-infos --fatal-warnings .
     filters:
       dirExists: [lib]
+      match: ['*_api', core]
+      noMatch: ['*_test']
 ```
+
+`match` / `noMatch` are **package-name** globs (not path globs). They are
+distinct from top-level `packages.include` / `packages.exclude`, which match
+relative package paths. Within one `match` list, patterns are OR; `noMatch`
+excludes any name matching any pattern. CLI `--no-match` follows the
+`--no-<filter>` / `no<Filter>` negation pattern.
 
 Invalid configs (both `run` and `exec`, neither, `filters` on a `run:` script,
 empty command lists, unquoted `&&` in a string command, or malformed YAML) fail
@@ -177,7 +185,8 @@ root), sorted for stable review.
 ```bash
 ripple list
 ripple list --group libs
-ripple list --packages core,ui
+ripple list --match core --match ui
+ripple list --no-match '*_test'
 ripple list --dir-exists test
 ripple list --file-exists README.md
 ripple list --depends-on path
@@ -186,14 +195,15 @@ ripple list --depends-on path
 | Flag | Description |
 | --- | --- |
 | `--group <name>` | Only packages in that named `packages.groups` entry. |
-| `--packages <a,b>` | Comma-separated package names; intersected with other filters. |
+| `--match <glob>` | Only packages whose name matches this glob (repeatable, OR). |
+| `--no-match <glob>` | Exclude packages whose name matches this glob (repeatable, OR). |
 | `--dir-exists <path>` | Only packages that contain this relative directory (repeatable, AND). |
 | `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 
-`RIPPLE_PACKAGES` (comma-separated names) intersects with `--packages` and every
-other active filter. Running outside any `ripple.yaml` ancestry fails with a
-config-not-found error.
+`RIPPLE_PACKAGES` (comma-separated **exact** package names, not globs)
+intersects with `--match` / `--no-match` and every other active filter. Running
+outside any `ripple.yaml` ancestry fails with a config-not-found error.
 
 ### `ripple exec`
 
@@ -222,7 +232,7 @@ inserts a newline before the next banner so markers stay on their own line.
 ```bash
 ripple exec -- dart analyze .
 ripple exec --group libs -- dart test
-ripple exec --packages core,ui --fail-fast -- dart format --set-exit-if-changed .
+ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ```
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
@@ -244,16 +254,16 @@ Execute a named script from `ripple.yaml`. Script ids may contain dots
 ```bash
 ripple run format.ci
 ripple run analyze.ci --group libs
-ripple run analyze.ci --packages core,ui --fail-fast
+ripple run analyze.ci --match core --match ui --fail-fast
 ```
 
 Behavior depends on the script kind:
 
 - **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
-  Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--packages`,
-  `--dir-exists`, `--file-exists`, `--depends-on`, and `RIPPLE_PACKAGES`) are
-  rejected. Each step gets command start/end stderr banners (no package-scope
-  banners).
+  Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--match`,
+  `--no-match`, `--dir-exists`, `--file-exists`, `--depends-on`, and
+  `RIPPLE_PACKAGES`) are rejected. Each step gets command start/end stderr
+  banners (no package-scope banners).
 - **`exec:`** — for each matching package, runs all list steps in that package
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
   Script-declared `filters` are intersected with CLI filters and
@@ -281,8 +291,9 @@ Child processes receive these variables in the environment (and as `$VAR` /
 | `RIPPLE_PACKAGE_PATH` | Absolute path to the current package directory. Set for `exec` / `exec:` only. |
 | `RIPPLE_PACKAGE_NAME` | Package name from that package's `pubspec.yaml`. Set for `exec` / `exec:` only. |
 
-`RIPPLE_PACKAGES` (selection filter) is read by Ripple itself; it is not
-injected into child processes beyond normal parent-environment inheritance.
+`RIPPLE_PACKAGES` (exact name allowlist selection filter) is read by Ripple
+itself; it is not injected into child processes beyond normal
+parent-environment inheritance.
 
 ## Non-goals
 

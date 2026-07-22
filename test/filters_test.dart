@@ -95,6 +95,39 @@ void main() {
       expect(names(filtered), ['ui', 'tool_pkg']);
     });
 
+    test('match selects by package-name globs (OR)', () {
+      final exact = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(match: [
+          ['ui'],
+        ]),
+        groupMembership: groups,
+      );
+      expect(names(exact), ['ui']);
+
+      final glob = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(match: [
+          ['*_pkg', 'core'],
+        ]),
+        groupMembership: groups,
+      );
+      expect(names(glob), ['core', 'tool_pkg']);
+    });
+
+    test('noMatch excludes by package-name globs', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(noMatch: ['*_pkg', 'ui']),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
     test('empty criteria returns the full discovered set', () {
       final filtered = filterPackages(
         packages,
@@ -150,6 +183,71 @@ void main() {
 
       expect(names(filtered), ['core']);
     });
+
+    test('fromScriptFilters maps match and noMatch name globs', () {
+      final criteria = PackageFilterCriteria.fromScriptFilters(
+        const ScriptFilters(
+          match: ['*_pkg', 'core'],
+          noMatch: ['ui'],
+        ),
+      );
+
+      expect(criteria.match, [
+        ['*_pkg', 'core'],
+      ]);
+      expect(criteria.noMatch, ['ui']);
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria,
+        groupMembership: groups,
+      );
+      expect(names(filtered), ['core', 'tool_pkg']);
+    });
+
+    test('match and noMatch compose with other filters', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria(
+          groups: ['libs'],
+          match: [
+            ['*'],
+          ],
+          noMatch: ['ui'],
+        ),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
+    test('intersect ANDs match OR-groups and concatenates noMatch', () {
+      final left = PackageFilterCriteria.fromNameGlobs(
+        match: ['*'],
+        noMatch: ['tool_pkg'],
+      );
+      final right = PackageFilterCriteria.fromNameGlobs(
+        match: ['*ore'],
+        noMatch: ['ui'],
+      );
+      final merged = left.intersect(right);
+
+      expect(merged.match, [
+        ['*'],
+        ['*ore'],
+      ]);
+      expect(merged.noMatch, ['tool_pkg', 'ui']);
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: merged,
+        groupMembership: groups,
+      );
+      expect(names(filtered), ['core']);
+    });
   });
 
   group('package name selection', () {
@@ -168,11 +266,10 @@ void main() {
       expect(names(filtered), ['ui']);
     });
 
-    test('explicit package list intersects with RIPPLE_PACKAGES', () {
-      final criteria = const PackageFilterCriteria().withPackageNameSelection(
-        packages: ['core', 'ui'],
-        ripplePackagesEnv: 'ui,tool_pkg',
-      );
+    test('exact packageNames intersects with RIPPLE_PACKAGES', () {
+      final criteria = const PackageFilterCriteria(
+        packageNames: ['core', 'ui'],
+      ).withPackageNameSelection(ripplePackagesEnv: 'ui,tool_pkg');
 
       final filtered = filterPackages(
         packages,
@@ -185,10 +282,9 @@ void main() {
     });
 
     test('empty name-selection intersection matches no packages', () {
-      final criteria = const PackageFilterCriteria().withPackageNameSelection(
-        packages: ['core'],
-        ripplePackagesEnv: 'ui',
-      );
+      final criteria = const PackageFilterCriteria(
+        packageNames: ['core'],
+      ).withPackageNameSelection(ripplePackagesEnv: 'ui');
 
       expect(criteria.packageNames, isEmpty);
       expect(criteria.isEmpty, isFalse);
@@ -203,10 +299,11 @@ void main() {
       expect(filtered, isEmpty);
     });
 
-    test('explicit package list intersects with path filters', () {
+    test('exact packageNames intersects with path filters', () {
       final criteria = const PackageFilterCriteria(
         dirExists: ['lib'],
-      ).withPackageNameSelection(packages: ['core', 'tool_pkg']);
+        packageNames: ['core', 'tool_pkg'],
+      );
 
       final filtered = filterPackages(
         packages,
@@ -278,6 +375,47 @@ void main() {
               contains('Missing group membership for "libs"'),
               contains('groupMembership'),
             ),
+          ),
+        ),
+      );
+    });
+
+    test('invalid match glob fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: const PackageFilterCriteria(match: [
+            ['['],
+          ]),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('Invalid package-name glob "["'),
+              isNot(contains('FormatException')),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('invalid noMatch glob fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: const PackageFilterCriteria(noMatch: ['{a']),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            contains('Invalid package-name glob "{a"'),
           ),
         ),
       );

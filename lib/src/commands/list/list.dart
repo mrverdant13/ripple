@@ -18,11 +18,17 @@ class ListCommand extends RippleCommand {
             'packages.groups.',
         valueHelp: 'name',
       )
-      ..addOption(
-        packagesOptionName,
-        help: 'Comma-separated package names to include. Intersected with '
-            '$ripplePackagesEnvVar and other filters.',
-        valueHelp: 'a,b',
+      ..addMultiOption(
+        matchOptionName,
+        help: 'Only packages whose name matches this glob. May be passed '
+            'multiple times (OR). Intersected with other filters.',
+        valueHelp: 'glob',
+      )
+      ..addMultiOption(
+        noMatchOptionName,
+        help: 'Exclude packages whose name matches this glob. May be passed '
+            'multiple times (OR). Negation of --$matchOptionName.',
+        valueHelp: 'glob',
       )
       ..addMultiOption(
         dirExistsOptionName,
@@ -48,8 +54,11 @@ class ListCommand extends RippleCommand {
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
-  /// Option name for `--packages`.
-  static const packagesOptionName = 'packages';
+  /// Option name for `--match`.
+  static const matchOptionName = 'match';
+
+  /// Option name for `--no-match`.
+  static const noMatchOptionName = 'no-match';
 
   /// Option name for `--dir-exists`.
   static const dirExistsOptionName = 'dir-exists';
@@ -72,13 +81,14 @@ class ListCommand extends RippleCommand {
     final config = loadRippleConfig();
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
-    final criteria = PackageFilterCriteria(
+    final criteria = PackageFilterCriteria.fromNameGlobs(
+      match: argResults!.multiOption(matchOptionName),
+      noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
     ).withPackageNameSelection(
-      packages: parsePackageNameList(argResults!.option(packagesOptionName)),
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 

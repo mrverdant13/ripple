@@ -144,13 +144,14 @@ void main() {
       final result = await runRipple([
         'run',
         'root.pwd',
-        '--packages',
+        '--match',
         'ui',
       ]);
 
       expect(result.exitCode, 64);
       expect(result.stderr, contains('run: script'));
       expect(result.stderr, contains('does not accept package filters'));
+      expect(result.stderr, contains('--match'));
     });
 
     test('run: script rejects RIPPLE_PACKAGES selection', () async {
@@ -168,8 +169,10 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.name',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -182,8 +185,10 @@ void main() {
         final result = await runRipple([
           'run',
           'pkg.steps',
-          '--packages',
-          'core,ui',
+          '--match',
+          'core',
+          '--match',
+          'ui',
         ]);
 
         expect(result.exitCode, 0, reason: result.stderr as String);
@@ -209,8 +214,10 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.steps.fail',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 5);
@@ -236,7 +243,7 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.env',
-        '--packages',
+        '--match',
         'ui',
       ]);
 
@@ -252,7 +259,7 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.subst',
-        '--packages',
+        '--match',
         'ui',
       ]);
 
@@ -264,8 +271,10 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.steps',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -278,8 +287,10 @@ void main() {
         final result = await runRipple([
           'run',
           'pkg.steps.fail',
-          '--packages',
-          'core,ui',
+          '--match',
+          'core',
+          '--match',
+          'ui',
         ]);
 
         expect(result.exitCode, 5);
@@ -294,8 +305,10 @@ void main() {
           'run',
           '--fail-fast',
           'pkg.steps.fail',
-          '--packages',
-          'core,ui',
+          '--match',
+          'core',
+          '--match',
+          'ui',
         ]);
 
         expect(result.exitCode, 5);
@@ -309,8 +322,10 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.filtered',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -322,8 +337,10 @@ void main() {
       final result = await runRipple([
         'run',
         'pkg.fail',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 3);
@@ -335,8 +352,10 @@ void main() {
         'run',
         '--fail-fast',
         'pkg.fail',
-        '--packages',
-        'core,ui',
+        '--match',
+        'core',
+        '--match',
+        'ui',
       ]);
 
       expect(result.exitCode, 3);
@@ -369,7 +388,8 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
       expect(help, contains('--group'));
-      expect(help, contains('--packages'));
+      expect(help, contains('--match'));
+      expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));

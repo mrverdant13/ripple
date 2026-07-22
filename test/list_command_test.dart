@@ -60,11 +60,38 @@ void main() {
       expect(stdoutLines(result), ['packages/core', 'packages/ui']);
     });
 
-    test('--packages intersects by package name', () async {
-      final result = await runRipple(['list', '--packages', 'ui,tool_pkg']);
+    test('--match exact names select packages', () async {
+      final result =
+          await runRipple(['list', '--match', 'ui', '--match', 'tool_pkg']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['packages/ui', 'tool']);
+    });
+
+    test('--match selects by package-name globs', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        '*_pkg',
+        '--match',
+        'core',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core', 'tool']);
+    });
+
+    test('--no-match excludes by package-name globs', () async {
+      final result = await runRipple([
+        'list',
+        '--no-match',
+        'ui',
+        '--no-match',
+        '*_pkg',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
     });
 
     test('--dir-exists narrows the printed set', () async {
@@ -93,8 +120,10 @@ void main() {
         'list',
         '--group',
         'libs',
-        '--packages',
-        'ui,tool_pkg',
+        '--match',
+        'ui',
+        '--match',
+        'tool_pkg',
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -116,6 +145,14 @@ void main() {
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('Unknown package group "missing"'));
+    });
+
+    test('invalid --match glob fails with a clear error', () async {
+      final result = await runRipple(['list', '--match', '[']);
+
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('Invalid package-name glob "["'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
     });
 
     test('outside any ripple.yaml ancestry fails clearly', () async {
@@ -144,7 +181,8 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       final help = result.stdout as String;
       expect(help, contains('--group'));
-      expect(help, contains('--packages'));
+      expect(help, contains('--match'));
+      expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
