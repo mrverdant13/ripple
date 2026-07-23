@@ -24,16 +24,16 @@ scripts:
       - dart run coverde optimize-tests --include test/**_test.dart --output test/optimized_test.dart
       - dart test --color --coverage-path coverage/lcov.info --coverage-package $RIPPLE_PACKAGE_NAME --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
     filters:
-      dependsOn: [test]
-      dirExists: [test]
+      - dependsOn: [test]
+      - dirExists: [test]
 
   test.ci:
     exec:
       - dart run coverde optimize-tests --include test/**_test.dart --output test/optimized_test.dart
       - dart test --coverage-path coverage/lcov.info --coverage-package $RIPPLE_PACKAGE_NAME --reporter expanded --test-randomize-ordering-seed random test/optimized_test.dart
     filters:
-      dependsOn: [test]
-      dirExists: [test]
+      - dependsOn: [test]
+      - dirExists: [test]
 
   coverage.merge:
     run:

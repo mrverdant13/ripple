@@ -63,7 +63,7 @@ ripple --version
      analyze:
        exec: dart analyze --fatal-infos --fatal-warnings .
        filters:
-         dirExists: [lib]
+         - dirExists: [lib]
    ```
 
 2. **List discovered packages** (directories under `include` that contain
@@ -130,8 +130,7 @@ Each script must declare **exactly one** of `run:` or `exec:` (XOR):
 - **`run:`** — execute once with cwd = the Ripple root. Must not declare
   `filters`.
 - **`exec:`** — execute once per matching package with cwd = that package.
-  Optional `filters` may include `dirExists`, `fileExists`, `dependsOn`,
-  `group`, `match`, and `noMatch`.
+  Optional `filters` is a **list** of single-key filter nodes (see below).
 
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
@@ -155,20 +154,44 @@ scripts:
   analyze.ci:
     exec: dart analyze --fatal-infos --fatal-warnings .
     filters:
-      dirExists: [lib]
-      match: ['*_api', core]
-      noMatch: ['*_test']
+      - dirExists: [lib]
+      - match: ['*_api', core]
+      - noMatch: ['*_test']
+
+  test.e2e:
+    exec: dart test
+    filters:
+      - match: ['*_app']
+      - or:
+          - dependsOn: [test]
+          - dirExists: [test]
+      - and:
+          - noMatch: ['*_test']
+          - fileExists: [pubspec.yaml]
 ```
+
+`filters` is list-form only. A top-level list is an implicit **and**. Nested
+`and` / `or` nodes are allowed. Each node is a map with **exactly one** key:
+
+| Key | Value | Semantics |
+| --- | --- | --- |
+| `and` / `or` | list of filter nodes | Boolean combination |
+| `dirExists` / `fileExists` | list of relative paths | Every path must exist (AND) |
+| `dependsOn` | list of package names | Every name must be a direct dep (AND) |
+| `group` | string | Package must be in that `packages.groups` entry |
+| `match` | list of name globs | Package name matches any glob (OR) |
+| `noMatch` | list of name globs | Package name matches none (OR exclude) |
 
 `match` / `noMatch` are **package-name** globs (not path globs). They are
 distinct from top-level `packages.include` / `packages.exclude`, which match
-relative package paths. Within one `match` list, patterns are OR; `noMatch`
-excludes any name matching any pattern. CLI `--no-match` follows the
+relative package paths. CLI flat flags (`--match`, `--dir-exists`, …) build an
+in-memory `and` of the same leaf kinds. CLI `--no-match` follows the
 `--no-<filter>` / `no<Filter>` negation pattern.
 
-Invalid configs (both `run` and `exec`, neither, `filters` on a `run:` script,
-empty command lists, unquoted `&&` in a string command, or malformed YAML) fail
-with a clear config error.
+Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
+`run` and `exec`, neither, `filters` on a `run:` script, empty command lists,
+unquoted `&&` in a string command, invalid filter nodes, or malformed YAML)
+fail with a clear config error.
 
 There is no cross-script composition (for example referencing other script ids
 inside a list). Compose named scripts from the shell when needed

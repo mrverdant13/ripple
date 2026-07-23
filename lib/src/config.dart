@@ -33,37 +33,157 @@ enum ScriptKind {
   exec,
 }
 
-/// Filters declared on an `exec:` script.
+/// Boolean package filter expression declared on an `exec:` script.
 ///
-/// Stored as data here; callers apply these filters when selecting packages.
-class ScriptFilters {
-  /// Creates script filters from config.
-  const ScriptFilters({
-    this.dirExists = const [],
-    this.fileExists = const [],
-    this.dependsOn = const [],
-    this.group,
-    this.match = const [],
-    this.noMatch = const [],
-  });
+/// YAML `filters` is a **list** of single-key maps. A top-level list is an
+/// implicit [FilterAnd]. Nested `and` / `or` nodes are allowed. Flat map
+/// `filters: { dirExists: …, match: … }` is rejected.
+sealed class FilterExpr {
+  /// Creates a filter expression node.
+  const FilterExpr();
+}
 
-  /// Relative directory paths that must exist under each package root.
-  final List<String> dirExists;
+/// Conjunction: every [children] expression must match.
+final class FilterAnd extends FilterExpr {
+  /// Creates an `and` node.
+  const FilterAnd(this.children);
 
-  /// Relative file paths that must exist under each package root.
-  final List<String> fileExists;
+  /// Child expressions (all must match).
+  final List<FilterExpr> children;
 
-  /// Direct dependency names that must appear in the package pubspec.
-  final List<String> dependsOn;
+  @override
+  bool operator ==(Object other) =>
+      other is FilterAnd && _listEquals(children, other.children);
 
-  /// Named group from `packages.groups`; package must be a member.
-  final String? group;
+  @override
+  int get hashCode => Object.hashAll(children);
+}
 
-  /// Package-name globs; package must match at least one when non-empty.
-  final List<String> match;
+/// Disjunction: at least one [children] expression must match.
+final class FilterOr extends FilterExpr {
+  /// Creates an `or` node.
+  const FilterOr(this.children);
 
-  /// Package-name globs; package must match none when non-empty.
-  final List<String> noMatch;
+  /// Child expressions (any may match).
+  final List<FilterExpr> children;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterOr && _listEquals(children, other.children);
+
+  @override
+  int get hashCode => Object.hashAll(children);
+}
+
+/// Relative directory paths that must all exist under the package root.
+final class FilterDirExists extends FilterExpr {
+  /// Creates a `dirExists` leaf.
+  const FilterDirExists(this.paths);
+
+  /// Relative directory paths (AND within the list).
+  final List<String> paths;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterDirExists && _listEquals(paths, other.paths);
+
+  @override
+  int get hashCode => Object.hashAll(paths);
+}
+
+/// Relative file paths that must all exist under the package root.
+final class FilterFileExists extends FilterExpr {
+  /// Creates a `fileExists` leaf.
+  const FilterFileExists(this.paths);
+
+  /// Relative file paths (AND within the list).
+  final List<String> paths;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterFileExists && _listEquals(paths, other.paths);
+
+  @override
+  int get hashCode => Object.hashAll(paths);
+}
+
+/// Direct dependency names that must all appear in the package pubspec.
+final class FilterDependsOn extends FilterExpr {
+  /// Creates a `dependsOn` leaf.
+  const FilterDependsOn(this.names);
+
+  /// Dependency names (AND within the list).
+  final List<String> names;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterDependsOn && _listEquals(names, other.names);
+
+  @override
+  int get hashCode => Object.hashAll(names);
+}
+
+/// Named group from `packages.groups`; package must be a member.
+final class FilterGroup extends FilterExpr {
+  /// Creates a `group` leaf.
+  const FilterGroup(this.name);
+
+  /// Group name from `packages.groups`.
+  final String name;
+
+  @override
+  bool operator ==(Object other) => other is FilterGroup && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
+}
+
+/// Package-name globs; package must match at least one when [globs] is
+/// non-empty.
+final class FilterMatch extends FilterExpr {
+  /// Creates a `match` leaf.
+  const FilterMatch(this.globs);
+
+  /// Package-name globs (OR within the list).
+  final List<String> globs;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterMatch && _listEquals(globs, other.globs);
+
+  @override
+  int get hashCode => Object.hashAll(globs);
+}
+
+/// Package-name globs; package must match none when [globs] is non-empty.
+final class FilterNoMatch extends FilterExpr {
+  /// Creates a `noMatch` leaf.
+  const FilterNoMatch(this.globs);
+
+  /// Package-name globs (OR exclude within the list).
+  final List<String> globs;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterNoMatch && _listEquals(globs, other.globs);
+
+  @override
+  int get hashCode => Object.hashAll(globs);
+}
+
+bool _listEquals<T>(List<T> a, List<T> b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// A named script from the `scripts` map in `ripple.yaml`.
@@ -98,8 +218,8 @@ class RippleScript {
   /// Steps run in order and stop on the first non-zero exit.
   final List<String> commands;
 
-  /// Optional filters; only valid when [kind] is [ScriptKind.exec].
-  final ScriptFilters? filters;
+  /// Optional filter expression; only valid when [kind] is [ScriptKind.exec].
+  final FilterExpr? filters;
 }
 
 /// Package discovery settings under `packages:`.
@@ -499,30 +619,183 @@ bool _containsUnquotedAnd(String command) {
   return false;
 }
 
-ScriptFilters? _filtersFromValue(
+FilterExpr? _filtersFromValue(
   Object? value,
   Map<dynamic, dynamic> parent,
 ) {
   if (value == null) {
     return null;
   }
-  if (value is! Map) {
+  if (value is Map) {
     throw CheckedFromJsonException(
       parent,
       'filters',
       'RippleScript',
-      'Expected a map',
+      'Expected a list of filter expressions; map-form filters are not '
+          'supported. Use a YAML list of single-key maps, e.g. '
+          '`filters: [{ dirExists: [lib] }, { match: ["*_api"] }]`',
+    );
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'RippleScript',
+      'Expected a list of filter expressions',
+    );
+  }
+  if (value.isEmpty) {
+    return null;
+  }
+  return FilterAnd(
+    List<FilterExpr>.unmodifiable(
+      [
+        for (var i = 0; i < value.length; i++)
+          _filterNodeFromValue(
+            value[i],
+            parent: parent,
+            path: 'filters[$i]',
+          ),
+      ],
+    ),
+  );
+}
+
+FilterExpr _filterNodeFromValue(
+  Object? value, {
+  required Map<dynamic, dynamic> parent,
+  required String path,
+}) {
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: expected a single-key map',
     );
   }
   final Map<dynamic, dynamic> map = value;
-  return ScriptFilters(
-    dirExists: _stringList(map, 'dirExists', 'ScriptFilters'),
-    fileExists: _stringList(map, 'fileExists', 'ScriptFilters'),
-    dependsOn: _stringList(map, 'dependsOn', 'ScriptFilters'),
-    group: _optionalString(map, 'group', 'ScriptFilters'),
-    match: _stringList(map, 'match', 'ScriptFilters'),
-    noMatch: _stringList(map, 'noMatch', 'ScriptFilters'),
-  );
+  if (map.length != 1) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: expected exactly one key '
+          '(and, or, match, noMatch, group, dependsOn, dirExists, '
+          'fileExists), found ${map.length}',
+    );
+  }
+  final entry = map.entries.single;
+  final key = entry.key;
+  if (key is! String) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: filter keys must be strings',
+    );
+  }
+
+  switch (key) {
+    case 'and':
+      return FilterAnd(
+          _filterChildrenFromValue(entry.value, parent, path, key));
+    case 'or':
+      return FilterOr(_filterChildrenFromValue(entry.value, parent, path, key));
+    case 'dirExists':
+      return FilterDirExists(_filterStringList(entry.value, parent, path, key));
+    case 'fileExists':
+      return FilterFileExists(
+          _filterStringList(entry.value, parent, path, key));
+    case 'dependsOn':
+      return FilterDependsOn(_filterStringList(entry.value, parent, path, key));
+    case 'match':
+      return FilterMatch(_filterStringList(entry.value, parent, path, key));
+    case 'noMatch':
+      return FilterNoMatch(_filterStringList(entry.value, parent, path, key));
+    case 'group':
+      final groupValue = entry.value;
+      if (groupValue is! String) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `group` must be a string',
+        );
+      }
+      return FilterGroup(groupValue);
+    default:
+      throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: unknown key "$key". Expected one of: '
+            'and, or, match, noMatch, group, dependsOn, dirExists, fileExists',
+      );
+  }
+}
+
+List<FilterExpr> _filterChildrenFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+  String path,
+  String key,
+) {
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: `$key` must be a list of filter expressions',
+    );
+  }
+  if (value.isEmpty) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: `$key` must be a non-empty list',
+    );
+  }
+  return List<FilterExpr>.unmodifiable([
+    for (var i = 0; i < value.length; i++)
+      _filterNodeFromValue(
+        value[i],
+        parent: parent,
+        path: '$path.$key[$i]',
+      ),
+  ]);
+}
+
+List<String> _filterStringList(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+  String path,
+  String key,
+) {
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: `$key` must be a list of strings',
+    );
+  }
+  final result = <String>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is! String) {
+      throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: `$key` must be a list of strings '
+            '(index $i)',
+      );
+    }
+    result.add(element);
+  }
+  return List<String>.unmodifiable(result);
 }
 
 String? _optionalString(

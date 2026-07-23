@@ -51,5 +51,4 @@ scripts:
   pkg.filtered:
     exec: printenv RIPPLE_PACKAGE_NAME
     filters:
-      dirExists:
-        - test
+      - dirExists: [test]
