@@ -165,9 +165,8 @@ scripts:
       - or:
           - dependsOn: [test]
           - dirExists: [test]
-      - and:
-          - noMatch: ['*_test']
-          - fileExists: [pubspec.yaml]
+      - noMatch: ['*_test']
+      - fileExists: [pubspec.yaml]
 ```
 
 `filters` is list-form only. A top-level list is an implicit **and**. Nested
