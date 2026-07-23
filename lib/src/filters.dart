@@ -12,45 +12,32 @@ import 'discovery.dart';
 
 /// Environment variable for comma-separated package name selection.
 ///
-/// When set, names are intersected with [PackageFilterCriteria.match] /
-/// [PackageFilterCriteria.noMatch] globs and every other active filter
-/// criterion. Values are exact package names, not globs.
+/// When set, names are intersected with [PackageFilterCriteria.expression]
+/// and every other active filter criterion. Values are exact package names,
+/// not globs.
 const ripplePackagesEnvVar = 'RIPPLE_PACKAGES';
 
 /// Criteria used to narrow a discovered package list.
 ///
-/// All non-empty criteria are applied with **intersection** semantics: a
-/// package must satisfy every active criterion. Within a single list such as
-/// [dirExists], every entry must match (AND). Within one [match] OR-group, a
-/// package matches if its name matches **any** glob; when [match] holds
-/// multiple groups (after [intersect]), the package must satisfy every group.
-/// Within [noMatch], a package is excluded if its name matches **any** glob.
-/// Within [packageNames], a package matches if its name is one of the selected
-/// names (OR / exact).
+/// [expression] is a boolean [FilterExpr] (CLI flags compile to an in-memory
+/// `and` of leaves). [packageNames] is an exact-name allowlist from
+/// `RIPPLE_PACKAGES` (or tests). A package must satisfy both when set.
 class PackageFilterCriteria {
   /// Creates filter criteria.
-  ///
-  /// [match] is a list of OR-groups of package-name globs. Pass a single group
-  /// for one filter source, e.g. `match: [['ui', '*_pkg']]`. [intersect]
-  /// concatenates groups so each source's OR-list must be satisfied (AND).
   ///
   /// [packageNames] is `null` when no exact name allowlist is active. An empty
   /// list means an allowlist is active and matches no packages (for example
   /// after an empty intersection involving `RIPPLE_PACKAGES`).
   const PackageFilterCriteria({
-    this.dirExists = const [],
-    this.fileExists = const [],
-    this.dependsOn = const [],
-    this.groups = const [],
-    this.match = const [],
-    this.noMatch = const [],
+    this.expression,
     this.packageNames,
   });
 
-  /// Builds criteria from a single filter source's name-glob OR-list.
+  /// Builds criteria from CLI flat flags as an `and` of leaf predicates.
   ///
-  /// Empty [match] / [noMatch] leave those criteria inactive. Non-empty
-  /// [match] becomes one OR-group.
+  /// Empty flag lists leave those leaves out. Non-empty [match] becomes one
+  /// [FilterMatch] leaf (OR within the list). Multiple [groups] become
+  /// separate [FilterGroup] leaves AND'd together.
   factory PackageFilterCriteria.fromNameGlobs({
     List<String> match = const [],
     List<String> noMatch = const [],
@@ -60,67 +47,36 @@ class PackageFilterCriteria {
     List<String> groups = const [],
     List<String>? packageNames,
   }) {
+    final leaves = <FilterExpr>[
+      if (dirExists.isNotEmpty) FilterDirExists(dirExists),
+      if (fileExists.isNotEmpty) FilterFileExists(fileExists),
+      if (dependsOn.isNotEmpty) FilterDependsOn(dependsOn),
+      for (final group in groups) FilterGroup(group),
+      if (match.isNotEmpty) FilterMatch(match),
+      if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
+    ];
     return PackageFilterCriteria(
-      dirExists: dirExists,
-      fileExists: fileExists,
-      dependsOn: dependsOn,
-      groups: groups,
-      match: match.isEmpty ? const [] : [List<String>.unmodifiable(match)],
-      noMatch: noMatch,
+      expression: _andLeaves(leaves),
       packageNames: packageNames,
     );
   }
 
-  /// Builds criteria from script-declared [filters].
+  /// Builds criteria from a script-declared [filters] expression.
   ///
   /// Optional [packageNames] are applied as an additional exact-name
   /// intersection. An empty [packageNames] iterable leaves name selection
   /// unset.
   factory PackageFilterCriteria.fromScriptFilters(
-    ScriptFilters? filters, {
+    FilterExpr? filters, {
     Iterable<String> packageNames = const [],
   }) {
     final names =
         packageNames.isEmpty ? null : List<String>.unmodifiable(packageNames);
-    if (filters == null) {
-      return PackageFilterCriteria(packageNames: names);
-    }
-    return PackageFilterCriteria(
-      dirExists: filters.dirExists,
-      fileExists: filters.fileExists,
-      dependsOn: filters.dependsOn,
-      groups: filters.group == null
-          ? const []
-          : List<String>.unmodifiable([filters.group!]),
-      match: filters.match.isEmpty
-          ? const []
-          : [List<String>.unmodifiable(filters.match)],
-      noMatch: filters.noMatch,
-      packageNames: names,
-    );
+    return PackageFilterCriteria(expression: filters, packageNames: names);
   }
 
-  /// Relative directory paths that must exist under each package root.
-  final List<String> dirExists;
-
-  /// Relative file paths that must exist under each package root.
-  final List<String> fileExists;
-
-  /// Direct dependency names that must appear in the package pubspec
-  /// (`dependencies` or `dev_dependencies`).
-  final List<String> dependsOn;
-
-  /// Named groups from `packages.groups`; the package must be a member of
-  /// every listed group (intersection when more than one is set).
-  final List<String> groups;
-
-  /// Package-name glob OR-groups. A package must match every group; within a
-  /// group, matching any pattern is enough.
-  final List<List<String>> match;
-
-  /// Package-name globs; when non-empty, [RipplePackage.name] must not match
-  /// any pattern.
-  final List<String> noMatch;
+  /// Boolean filter expression, or `null` when no expression filter is set.
+  final FilterExpr? expression;
 
   /// Exact selected package names, or `null` when no allowlist is active.
   ///
@@ -129,14 +85,7 @@ class PackageFilterCriteria {
   final List<String>? packageNames;
 
   /// Whether any criterion is active.
-  bool get isEmpty =>
-      dirExists.isEmpty &&
-      fileExists.isEmpty &&
-      dependsOn.isEmpty &&
-      groups.isEmpty &&
-      match.isEmpty &&
-      noMatch.isEmpty &&
-      packageNames == null;
+  bool get isEmpty => expression == null && packageNames == null;
 
   /// Returns a copy with [packageNames] replaced by the intersection of the
   /// current names (if any) and names parsed from [ripplePackagesEnv].
@@ -154,36 +103,42 @@ class PackageFilterCriteria {
       fromEnv,
     );
     return PackageFilterCriteria(
-      dirExists: dirExists,
-      fileExists: fileExists,
-      dependsOn: dependsOn,
-      groups: groups,
-      match: match,
-      noMatch: noMatch,
+      expression: expression,
       packageNames: selected,
     );
   }
 
   /// Combines this criteria with [other].
   ///
-  /// Path and dependency lists (`dirExists`, `fileExists`, `dependsOn`),
-  /// [groups], and [noMatch] are concatenated so every list entry must be
-  /// satisfied under that criterion's rules. [match] OR-groups are
-  /// concatenated so every group must match (AND across sources). Exact name
-  /// selections intersect when either side has an active [packageNames]
-  /// filter (`null` means unset).
+  /// Expressions are AND'd. Exact name selections intersect when either side
+  /// has an active [packageNames] filter (`null` means unset).
   PackageFilterCriteria intersect(PackageFilterCriteria other) {
     return PackageFilterCriteria(
-      dirExists: List<String>.unmodifiable([...dirExists, ...other.dirExists]),
-      fileExists:
-          List<String>.unmodifiable([...fileExists, ...other.fileExists]),
-      dependsOn: List<String>.unmodifiable([...dependsOn, ...other.dependsOn]),
-      groups: List<String>.unmodifiable([...groups, ...other.groups]),
-      match: List<List<String>>.unmodifiable([...match, ...other.match]),
-      noMatch: List<String>.unmodifiable([...noMatch, ...other.noMatch]),
+      expression: andFilterExprs(expression, other.expression),
       packageNames: resolvePackageNameFilter(packageNames, other.packageNames),
     );
   }
+}
+
+/// Returns an `and` of [a] and [b], omitting null sides.
+FilterExpr? andFilterExprs(FilterExpr? a, FilterExpr? b) {
+  if (a == null) {
+    return b;
+  }
+  if (b == null) {
+    return a;
+  }
+  return FilterAnd([a, b]);
+}
+
+FilterExpr? _andLeaves(List<FilterExpr> leaves) {
+  if (leaves.isEmpty) {
+    return null;
+  }
+  if (leaves.length == 1) {
+    return leaves.single;
+  }
+  return FilterAnd(List<FilterExpr>.unmodifiable(leaves));
 }
 
 /// Parses a comma-separated package name list from [ripplePackagesEnvVar].
@@ -234,8 +189,8 @@ List<String>? resolvePackageNameFilter(
 /// Group membership is resolved via [groupMembership] when provided; otherwise
 /// [resolvePackageGroups] is used. Throws [RippleConfigException] when a
 /// requested group name is not defined in [config], when a provided
-/// [groupMembership] map omits a requested group, or when a [match] /
-/// [noMatch] pattern is not a valid glob.
+/// [groupMembership] map omits a requested group, or when a [FilterMatch] /
+/// [FilterNoMatch] pattern is not a valid glob.
 ///
 /// Order of [packages] is preserved.
 List<RipplePackage> filterPackages(
@@ -248,7 +203,11 @@ List<RipplePackage> filterPackages(
     return List<RipplePackage>.unmodifiable(packages);
   }
 
-  for (final groupName in criteria.groups) {
+  final expression = criteria.expression;
+  final referencedGroups =
+      expression == null ? const <String>{} : _collectGroupNames(expression);
+
+  for (final groupName in referencedGroups) {
     if (!config.packages.groups.containsKey(groupName)) {
       final known = config.packages.groups.keys;
       final knownList = known.isEmpty ? '(none)' : known.join(', ');
@@ -260,63 +219,39 @@ List<RipplePackage> filterPackages(
 
   final groups =
       groupMembership ?? resolvePackageGroups(config, packages: packages);
-  final groupMemberPaths = <String>{};
-  if (criteria.groups.isNotEmpty) {
-    List<RipplePackage> membersFor(String groupName) {
-      final members = groups[groupName];
-      if (members == null) {
-        throw RippleConfigException(
-          'Missing group membership for "$groupName". '
-          'Provide a complete groupMembership map or omit it to resolve '
-          'groups from config.',
-        );
-      }
-      return members;
+  final groupMemberPaths = <String, Set<String>>{};
+  for (final groupName in referencedGroups) {
+    final members = groups[groupName];
+    if (members == null) {
+      throw RippleConfigException(
+        'Missing group membership for "$groupName". '
+        'Provide a complete groupMembership map or omit it to resolve '
+        'groups from config.',
+      );
     }
-
-    // Start from the first group, then intersect with each additional group.
-    var memberPaths = membersFor(criteria.groups.first)
-        .map((package) => package.relativePath)
-        .toSet();
-    for (var i = 1; i < criteria.groups.length; i++) {
-      final next = membersFor(criteria.groups[i])
-          .map((package) => package.relativePath)
-          .toSet();
-      memberPaths = memberPaths.intersection(next);
-    }
-    groupMemberPaths.addAll(memberPaths);
+    groupMemberPaths[groupName] = {
+      for (final package in members) package.relativePath,
+    };
   }
 
   final selectedNames = criteria.packageNames;
   final nameSet = selectedNames?.toSet();
-  final matchGroups = [
-    for (final group in criteria.match)
-      [for (final pattern in group) _nameGlob(pattern)],
-  ];
-  final noMatchGlobs = [
-    for (final pattern in criteria.noMatch) _nameGlob(pattern),
-  ];
+  final globCache = <String, Glob>{};
+  final pubspecCache = <String, Pubspec>{};
 
   final filtered = <RipplePackage>[];
   for (final package in packages) {
-    if (!_matchesAllNameGroups(package.name, matchGroups)) {
-      continue;
-    }
-    if (noMatchGlobs.isNotEmpty &&
-        _matchesAnyName(package.name, noMatchGlobs)) {
-      continue;
-    }
     if (nameSet != null && !nameSet.contains(package.name)) {
       continue;
     }
-    if (criteria.groups.isNotEmpty &&
-        !groupMemberPaths.contains(package.relativePath)) {
-      continue;
-    }
-    if (!_matchesPathFilters(package, criteria)) {
-      continue;
-    }
-    if (!_matchesDependsOn(package, criteria.dependsOn)) {
+    if (expression != null &&
+        !_matchesExpression(
+          expression,
+          package: package,
+          groupMemberPaths: groupMemberPaths,
+          globCache: globCache,
+          pubspecCache: pubspecCache,
+        )) {
       continue;
     }
     filtered.add(package);
@@ -325,12 +260,72 @@ List<RipplePackage> filterPackages(
   return List<RipplePackage>.unmodifiable(filtered);
 }
 
+Set<String> _collectGroupNames(FilterExpr expression) {
+  return switch (expression) {
+    FilterAnd(:final children) || FilterOr(:final children) => {
+        for (final child in children) ..._collectGroupNames(child),
+      },
+    FilterGroup(:final name) => {name},
+    FilterDirExists() ||
+    FilterFileExists() ||
+    FilterDependsOn() ||
+    FilterMatch() ||
+    FilterNoMatch() =>
+      const {},
+  };
+}
+
+bool _matchesExpression(
+  FilterExpr expression, {
+  required RipplePackage package,
+  required Map<String, Set<String>> groupMemberPaths,
+  required Map<String, Glob> globCache,
+  required Map<String, Pubspec> pubspecCache,
+}) {
+  return switch (expression) {
+    FilterAnd(:final children) => children.every(
+        (child) => _matchesExpression(
+          child,
+          package: package,
+          groupMemberPaths: groupMemberPaths,
+          globCache: globCache,
+          pubspecCache: pubspecCache,
+        ),
+      ),
+    FilterOr(:final children) => children.any(
+        (child) => _matchesExpression(
+          child,
+          package: package,
+          groupMemberPaths: groupMemberPaths,
+          globCache: globCache,
+          pubspecCache: pubspecCache,
+        ),
+      ),
+    FilterDirExists(:final paths) => _matchesDirExists(package, paths),
+    FilterFileExists(:final paths) => _matchesFileExists(package, paths),
+    FilterDependsOn(:final names) =>
+      _matchesDependsOn(package, names, pubspecCache),
+    FilterGroup(:final name) =>
+      groupMemberPaths[name]!.contains(package.relativePath),
+    FilterMatch(:final globs) =>
+      globs.isEmpty || _matchesAnyName(package.name, globs, globCache),
+    FilterNoMatch(:final globs) =>
+      globs.isEmpty || !_matchesAnyName(package.name, globs, globCache),
+  };
+}
+
 /// Context for matching package-name globs (POSIX-style, no filesystem walk).
 final _nameMatchContext = p.Context(style: p.Style.posix);
 
-Glob _nameGlob(String pattern) {
+Glob _cachedNameGlob(String pattern, Map<String, Glob> cache) {
+  final cached = cache[pattern];
+  if (cached != null) {
+    return cached;
+  }
   try {
-    return Glob(pattern, context: _nameMatchContext);
+    final glob = Glob(pattern, context: _nameMatchContext);
+    cache[pattern] = glob;
+    return glob;
   } on FormatException catch (error) {
     throw RippleConfigException(
       'Invalid package-name glob "$pattern": ${error.message}',
@@ -338,38 +333,31 @@ Glob _nameGlob(String pattern) {
   }
 }
 
-bool _matchesAllNameGroups(String name, List<List<Glob>> groups) {
-  for (final group in groups) {
-    if (group.isEmpty) {
-      continue;
-    }
-    if (!_matchesAnyName(name, group)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool _matchesAnyName(String name, List<Glob> globs) {
-  for (final glob in globs) {
-    if (glob.matches(name)) {
+bool _matchesAnyName(
+  String name,
+  List<String> patterns,
+  Map<String, Glob> cache,
+) {
+  for (final pattern in patterns) {
+    if (_cachedNameGlob(pattern, cache).matches(name)) {
       return true;
     }
   }
   return false;
 }
 
-bool _matchesPathFilters(
-  RipplePackage package,
-  PackageFilterCriteria criteria,
-) {
-  for (final relativeDir in criteria.dirExists) {
+bool _matchesDirExists(RipplePackage package, List<String> relativeDirs) {
+  for (final relativeDir in relativeDirs) {
     final dir = Directory(p.join(package.path, relativeDir));
     if (!dir.existsSync()) {
       return false;
     }
   }
-  for (final relativeFile in criteria.fileExists) {
+  return true;
+}
+
+bool _matchesFileExists(RipplePackage package, List<String> relativeFiles) {
+  for (final relativeFile in relativeFiles) {
     final file = File(p.join(package.path, relativeFile));
     if (!file.existsSync()) {
       return false;
@@ -378,9 +366,36 @@ bool _matchesPathFilters(
   return true;
 }
 
-bool _matchesDependsOn(RipplePackage package, List<String> dependsOn) {
+bool _matchesDependsOn(
+  RipplePackage package,
+  List<String> dependsOn,
+  Map<String, Pubspec> pubspecCache,
+) {
   if (dependsOn.isEmpty) {
     return true;
+  }
+
+  final pubspec = _cachedPubspec(package, pubspecCache);
+  final declared = <String>{
+    ...pubspec.dependencies.keys,
+    ...pubspec.devDependencies.keys,
+  };
+
+  for (final name in dependsOn) {
+    if (!declared.contains(name)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Pubspec _cachedPubspec(
+  RipplePackage package,
+  Map<String, Pubspec> cache,
+) {
+  final cached = cache[package.path];
+  if (cached != null) {
+    return cached;
   }
 
   final pubspecFile = File(p.join(package.path, 'pubspec.yaml'));
@@ -405,15 +420,6 @@ bool _matchesDependsOn(RipplePackage package, List<String> dependsOn) {
     );
   }
 
-  final declared = <String>{
-    ...pubspec.dependencies.keys,
-    ...pubspec.devDependencies.keys,
-  };
-
-  for (final name in dependsOn) {
-    if (!declared.contains(name)) {
-      return false;
-    }
-  }
-  return true;
+  cache[package.path] = pubspec;
+  return pubspec;
 }

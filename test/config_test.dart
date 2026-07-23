@@ -27,18 +27,12 @@ scripts:
   analyze.ci:
     exec: dart analyze .
     filters:
-      dirExists:
-        - lib
-      fileExists:
-        - pubspec.yaml
-      dependsOn:
-        - test
-      group: core
-      match:
-        - '*_api'
-        - core
-      noMatch:
-        - '*_test'
+      - dirExists: [lib]
+      - fileExists: [pubspec.yaml]
+      - dependsOn: [test]
+      - group: core
+      - match: ['*_api', core]
+      - noMatch: ['*_test']
 ''';
 
       final config = parseRippleYaml(yaml, rootPath: '/tmp/demo');
@@ -60,12 +54,17 @@ scripts:
       final analyze = config.scripts['analyze.ci']!;
       expect(analyze.kind, ScriptKind.exec);
       expect(analyze.commands, ['dart analyze .']);
-      expect(analyze.filters!.dirExists, ['lib']);
-      expect(analyze.filters!.fileExists, ['pubspec.yaml']);
-      expect(analyze.filters!.dependsOn, ['test']);
-      expect(analyze.filters!.group, 'core');
-      expect(analyze.filters!.match, ['*_api', 'core']);
-      expect(analyze.filters!.noMatch, ['*_test']);
+      expect(
+        analyze.filters,
+        const FilterAnd([
+          FilterDirExists(['lib']),
+          FilterFileExists(['pubspec.yaml']),
+          FilterDependsOn(['test']),
+          FilterGroup('core'),
+          FilterMatch(['*_api', 'core']),
+          FilterNoMatch(['*_test']),
+        ]),
+      );
     });
 
     test('defaults missing packages and scripts to empty', () {
@@ -105,7 +104,7 @@ scripts:
 scripts:
   bad:
     filters:
-      group: core
+      - group: core
 ''',
           rootPath: '/r',
         ),
@@ -127,7 +126,7 @@ scripts:
   bad:
     run: dart format .
     filters:
-      group: core
+      - group: core
 ''',
           rootPath: '/r',
         ),
@@ -136,6 +135,131 @@ scripts:
             (e) => e.message,
             'message',
             allOf(contains('run:'), contains('filters')),
+          ),
+        ),
+      );
+    });
+
+    test('parses nested and/or filter expressions', () {
+      const yaml = '''
+scripts:
+  nested:
+    exec: dart test
+    filters:
+      - match: ['*_app']
+      - or:
+          - dependsOn: [test]
+          - dirExists: [test]
+      - and:
+          - noMatch: ['*_test']
+          - fileExists: [pubspec.yaml]
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(
+        config.scripts['nested']!.filters,
+        const FilterAnd([
+          FilterMatch(['*_app']),
+          FilterOr([
+            FilterDependsOn(['test']),
+            FilterDirExists(['test']),
+          ]),
+          FilterAnd([
+            FilterNoMatch(['*_test']),
+            FilterFileExists(['pubspec.yaml']),
+          ]),
+        ]),
+      );
+    });
+
+    test('rejects map-form filters with a clear error', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      dirExists: [lib]
+      match: ['*_api']
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('list of filter expressions'),
+              contains('map-form'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects filter nodes with unknown keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - preset: e2e
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('unknown key "preset"'), contains('filters[0]')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects filter nodes with multiple keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - dirExists: [lib]
+        match: ['*_api']
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('exactly one key'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects empty and/or children', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - or: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('non-empty list'),
           ),
         ),
       );
@@ -153,8 +277,7 @@ scripts:
       - dart analyze .
       - dart test
     filters:
-      dirExists:
-        - lib
+      - dirExists: [lib]
 ''';
 
       final config = parseRippleYaml(yaml, rootPath: '/r');
@@ -169,7 +292,12 @@ scripts:
         ['dart analyze .', 'dart test'],
       );
       expect(config.scripts['analyze.ci']!.kind, ScriptKind.exec);
-      expect(config.scripts['analyze.ci']!.filters!.dirExists, ['lib']);
+      expect(
+        config.scripts['analyze.ci']!.filters,
+        const FilterAnd([
+          FilterDirExists(['lib']),
+        ]),
+      );
     });
 
     test('allows quoted && inside sh -c', () {
