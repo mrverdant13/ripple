@@ -587,33 +587,17 @@ Pubspec _cachedPubspec(
   RipplePackage package,
   Map<String, Pubspec> cache,
 ) {
+  final attached = package.pubspec;
+  if (attached != null) {
+    return attached;
+  }
+
   final cached = cache[package.path];
   if (cached != null) {
     return cached;
   }
 
-  final pubspecFile = File(p.join(package.path, 'pubspec.yaml'));
-  late final String contents;
-  try {
-    contents = pubspecFile.readAsStringSync();
-  } on FileSystemException catch (error) {
-    throw RippleConfigException(
-      'Failed to read ${pubspecFile.path}: ${error.message}',
-    );
-  }
-
-  late final Pubspec pubspec;
-  try {
-    pubspec = Pubspec.parse(
-      contents,
-      sourceUrl: p.toUri(pubspecFile.path),
-    );
-  } on Object catch (error) {
-    throw RippleConfigException(
-      'Invalid pubspec at ${pubspecFile.path}: $error',
-    );
-  }
-
+  final pubspec = resolvePackagePubspec(package);
   cache[package.path] = pubspec;
   return pubspec;
 }

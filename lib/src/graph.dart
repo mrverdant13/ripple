@@ -2,12 +2,7 @@
 library;
 
 import 'dart:collection';
-import 'dart:io';
 
-import 'package:path/path.dart' as p;
-import 'package:pubspec_parse/pubspec_parse.dart';
-
-import 'config.dart';
 import 'discovery.dart';
 
 /// Directed dependency graph over [discovered] workspace packages.
@@ -23,9 +18,11 @@ class WorkspaceGraph {
   })  : _forward = forward,
         _reverse = reverse;
 
-  /// Builds a graph from [packages] by reading each package's pubspec.
+  /// Builds a graph from [packages] using each package's declared deps.
   ///
-  /// Throws [RippleConfigException] when a pubspec cannot be read or parsed.
+  /// Uses [RipplePackage.pubspec] when present; otherwise reads `pubspec.yaml`
+  /// from disk. Throws [RippleConfigException] when a pubspec cannot be read
+  /// or parsed.
   factory WorkspaceGraph.fromPackages(List<RipplePackage> packages) {
     final byName = <String, RipplePackage>{
       for (final package in packages) package.name: package,
@@ -110,28 +107,7 @@ class WorkspaceGraph {
 }
 
 Set<String> _declaredDependencyNames(RipplePackage package) {
-  final pubspecFile = File(p.join(package.path, 'pubspec.yaml'));
-  late final String contents;
-  try {
-    contents = pubspecFile.readAsStringSync();
-  } on FileSystemException catch (error) {
-    throw RippleConfigException(
-      'Failed to read ${pubspecFile.path}: ${error.message}',
-    );
-  }
-
-  late final Pubspec pubspec;
-  try {
-    pubspec = Pubspec.parse(
-      contents,
-      sourceUrl: p.toUri(pubspecFile.path),
-    );
-  } on Object catch (error) {
-    throw RippleConfigException(
-      'Invalid pubspec at ${pubspecFile.path}: $error',
-    );
-  }
-
+  final pubspec = resolvePackagePubspec(package);
   return {
     ...pubspec.dependencies.keys,
     ...pubspec.devDependencies.keys,
