@@ -205,10 +205,32 @@ bool _listEquals<T>(List<T> a, List<T> b) {
   return true;
 }
 
+/// Expansion of a dependents or dependencies closure on an `exec:` script.
+///
+/// Constructed only when the YAML key (`dependentsFilters` /
+/// `dependenciesFilters`) is **present**. A null [expression] means the key
+/// was an empty list (`[]`) — take the full transitive closure. A non-null
+/// [expression] keeps only packages from that closure that match the AST.
+final class GraphExpansionFilters {
+  /// Creates expansion filters; omit [expression] for an exhaustive closure.
+  const GraphExpansionFilters({this.expression});
+
+  /// Constraint on the closure, or `null` for an exhaustive (`[]`) expansion.
+  final FilterExpr? expression;
+
+  @override
+  bool operator ==(Object other) =>
+      other is GraphExpansionFilters && other.expression == expression;
+
+  @override
+  int get hashCode => expression.hashCode;
+}
+
 /// A named script from the `scripts` map in `ripple.yaml`.
 ///
 /// Exactly one of `run:` or `exec:` is allowed per script (XOR). A `run:`
-/// script must not declare `filters`.
+/// script must not declare `filters`, `dependentsFilters`, or
+/// `dependenciesFilters`.
 ///
 /// [commands] is one or more argv command strings run sequentially (fail-fast
 /// between steps). A bare string in YAML is normalized to a single-element
@@ -220,9 +242,14 @@ class RippleScript {
     required this.kind,
     required this.commands,
     this.filters,
+    this.dependentsFilters,
+    this.dependenciesFilters,
   }) : assert(
-          kind == ScriptKind.exec || filters == null,
-          'run: scripts must not declare filters',
+          kind == ScriptKind.exec ||
+              (filters == null &&
+                  dependentsFilters == null &&
+                  dependenciesFilters == null),
+          'run: scripts must not declare filters or expansion keys',
         );
 
   /// Key under `scripts:` (may contain dots, e.g. `format.ci`).
@@ -237,8 +264,21 @@ class RippleScript {
   /// Steps run in order and stop on the first non-zero exit.
   final List<String> commands;
 
-  /// Optional filter expression; only valid when [kind] is [ScriptKind.exec].
+  /// Optional seed filter expression; only valid when [kind] is
+  /// [ScriptKind.exec].
   final FilterExpr? filters;
+
+  /// Optional dependents expansion; only valid for [ScriptKind.exec].
+  ///
+  /// `null` means the YAML key is absent (do not expand). See
+  /// [GraphExpansionFilters].
+  final GraphExpansionFilters? dependentsFilters;
+
+  /// Optional dependencies expansion; only valid for [ScriptKind.exec].
+  ///
+  /// `null` means the YAML key is absent (do not expand). See
+  /// [GraphExpansionFilters].
+  final GraphExpansionFilters? dependenciesFilters;
 }
 
 /// Package discovery settings under `packages:`.
@@ -339,7 +379,8 @@ RippleConfig loadRippleConfig({Directory? start}) {
 ///
 /// [rootPath] is the directory that contains the config file (not the file
 /// path itself). Throws [RippleConfigException] for invalid YAML or schema
-/// violations (including script `run`/`exec` XOR and `filters` on `run:`).
+/// violations (including script `run`/`exec` XOR and `filters` /
+/// expansion keys on `run:`).
 RippleConfig parseRippleYaml(
   String yamlContent, {
   required String rootPath,
@@ -551,13 +592,34 @@ RippleScript _scriptFromValue(
   }
 
   final filtersValue = map['filters'];
-  if (hasRun && filtersValue != null) {
-    throw CheckedFromJsonException(
-      map,
-      'filters',
-      'RippleScript',
-      'Script "$name" uses `run:` and must not declare `filters`',
-    );
+  final hasDependentsFilters = map.containsKey('dependentsFilters');
+  final hasDependenciesFilters = map.containsKey('dependenciesFilters');
+  if (hasRun) {
+    if (filtersValue != null) {
+      throw CheckedFromJsonException(
+        map,
+        'filters',
+        'RippleScript',
+        'Script "$name" uses `run:` and must not declare `filters`',
+      );
+    }
+    if (hasDependentsFilters) {
+      throw CheckedFromJsonException(
+        map,
+        'dependentsFilters',
+        'RippleScript',
+        'Script "$name" uses `run:` and must not declare `dependentsFilters`',
+      );
+    }
+    if (hasDependenciesFilters) {
+      throw CheckedFromJsonException(
+        map,
+        'dependenciesFilters',
+        'RippleScript',
+        'Script "$name" uses `run:` and must not declare '
+            '`dependenciesFilters`',
+      );
+    }
   }
 
   final kindKey = hasRun ? 'run' : 'exec';
@@ -580,6 +642,79 @@ RippleScript _scriptFromValue(
             className: 'RippleScript',
           )
         : null,
+    dependentsFilters: hasExec
+        ? _graphExpansionFromValue(
+            map['dependentsFilters'],
+            map,
+            keyName: 'dependentsFilters',
+            keyPresent: hasDependentsFilters,
+            scriptName: name,
+          )
+        : null,
+    dependenciesFilters: hasExec
+        ? _graphExpansionFromValue(
+            map['dependenciesFilters'],
+            map,
+            keyName: 'dependenciesFilters',
+            keyPresent: hasDependenciesFilters,
+            scriptName: name,
+          )
+        : null,
+  );
+}
+
+/// Parses `dependentsFilters` / `dependenciesFilters` with absent / `[]` /
+/// constrained semantics.
+///
+/// Returns `null` when [keyPresent] is false. An empty list yields
+/// [GraphExpansionFilters] with a null expression (exhaustive closure).
+GraphExpansionFilters? _graphExpansionFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent, {
+  required String keyName,
+  required bool keyPresent,
+  required String scriptName,
+}) {
+  if (!keyPresent) {
+    return null;
+  }
+  if (value == null) {
+    throw CheckedFromJsonException(
+      parent,
+      keyName,
+      'RippleScript',
+      'Script "$scriptName" `$keyName` must be a list of filter expressions '
+          '(use `[]` for an exhaustive closure)',
+    );
+  }
+  if (value is Map) {
+    throw CheckedFromJsonException(
+      parent,
+      keyName,
+      'RippleScript',
+      'Expected a list of filter expressions; map-form filters are not '
+          'supported. Use a YAML list of single-key maps, or `[]` for an '
+          'exhaustive closure',
+    );
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      keyName,
+      'RippleScript',
+      'Expected a list of filter expressions',
+    );
+  }
+  if (value.isEmpty) {
+    return const GraphExpansionFilters();
+  }
+  return GraphExpansionFilters(
+    expression: _filtersFromValue(
+      value,
+      parent,
+      keyName: keyName,
+      className: 'RippleScript',
+    ),
   );
 }
 

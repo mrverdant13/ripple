@@ -45,6 +45,7 @@ ripple/                         # repo root = package root
 │       ├── config.dart
 │       ├── discovery.dart
 │       ├── filters.dart
+│       ├── graph.dart          # Workspace dep graph + transitive closures
 │       ├── exec.dart           # Process runner helper (cwd/env/exit code)
 │       ├── scripts.dart
 │       └── commands/
@@ -167,7 +168,12 @@ Prioritize coverage for:
   `noMatch`, nested `and` / `or`, `preset` / `packages.filtersPresets`,
   `--match` / `--no-match` / `--preset`, `RIPPLE_PACKAGES`) and rejection of
   map-form `filters`
-- Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` on a `run:` script)
+- Graph expansion on `exec:` scripts (`dependentsFilters` /
+  `dependenciesFilters`: absent vs `[]` vs constrained AST; workspace-only
+  edges; transitive forward/reverse closures; `RIPPLE_PACKAGES` seed narrowing;
+  no expansion on bare `list` / `exec`)
+- Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` /
+  expansion keys on a `run:` script)
 - Multi-step `run:` / `exec:` lists (sequential fail-fast; all steps per package)
 - Rejection of unquoted `&&` in string commands
 - Fail-fast on ad-hoc `exec` and `exec:` scripts

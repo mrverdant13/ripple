@@ -310,6 +310,123 @@ scripts:
       );
     });
 
+    test('rejects dependentsFilters on a run script', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run: dart format .
+    dependentsFilters: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('run:'), contains('dependentsFilters')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects dependenciesFilters on a run script', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    run: dart format .
+    dependenciesFilters: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('run:'), contains('dependenciesFilters')),
+          ),
+        ),
+      );
+    });
+
+    test('parses absent, empty, and constrained expansion filters', () {
+      const yaml = '''
+scripts:
+  seedsOnly:
+    exec: dart test
+    filters:
+      - match: [core]
+  exhaustiveDependents:
+    exec: dart test
+    filters:
+      - match: [core]
+    dependentsFilters: []
+  constrainedDependencies:
+    exec: dart test
+    filters:
+      - match: [app]
+    dependenciesFilters:
+      - match: [ui]
+      - preset: withTestDir
+packages:
+  filtersPresets:
+    withTestDir:
+      - dirExists: [test]
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(config.scripts['seedsOnly']!.dependentsFilters, isNull);
+      expect(config.scripts['seedsOnly']!.dependenciesFilters, isNull);
+
+      expect(
+        config.scripts['exhaustiveDependents']!.dependentsFilters,
+        const GraphExpansionFilters(),
+      );
+      expect(
+        config.scripts['exhaustiveDependents']!.dependenciesFilters,
+        isNull,
+      );
+
+      expect(
+        config.scripts['constrainedDependencies']!.dependenciesFilters,
+        const GraphExpansionFilters(
+          expression: FilterAnd([
+            FilterMatch(['ui']),
+            FilterPreset('withTestDir'),
+          ]),
+        ),
+      );
+    });
+
+    test('rejects map-form expansion filters', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart test
+    dependentsFilters:
+      match: [ui]
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('list of filter expressions'),
+              contains('map-form'),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('parses nested and/or filter expressions', () {
       const yaml = '''
 scripts:

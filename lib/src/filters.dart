@@ -9,6 +9,7 @@ import 'package:pubspec_parse/pubspec_parse.dart';
 
 import 'config.dart';
 import 'discovery.dart';
+import 'graph.dart';
 
 /// Environment variable for comma-separated package name selection.
 ///
@@ -251,6 +252,117 @@ List<String>? resolvePackageNameFilter(
     result = result.where(allowed.contains).toList();
   }
   return List<String>.unmodifiable(result);
+}
+
+/// Result of [selectPackages]: seed packages plus optional graph expansions.
+class PackageSelection {
+  /// Creates a selection result.
+  const PackageSelection({
+    required this.seeds,
+    required this.dependents,
+    required this.dependencies,
+    required this.packages,
+  });
+
+  /// Packages matching seed [PackageFilterCriteria].
+  final List<RipplePackage> seeds;
+
+  /// Packages from the reverse closure that matched [dependentsFilters].
+  final List<RipplePackage> dependents;
+
+  /// Packages from the forward closure that matched [dependenciesFilters].
+  final List<RipplePackage> dependencies;
+
+  /// Union of [seeds], [dependents], and [dependencies], stable by
+  /// [RipplePackage.relativePath].
+  final List<RipplePackage> packages;
+}
+
+/// Selects packages as seeds plus optional dependents/dependencies expansion.
+///
+/// Seeds are [filterPackages] with [criteria] (CLI flags, script `filters`,
+/// and `RIPPLE_PACKAGES`). When [dependentsFilters] / [dependenciesFilters]
+/// are non-null, the corresponding transitive closure over the workspace
+/// graph is constrained by that expansion's expression (`null` expression =
+/// exhaustive closure) and unioned into the result.
+///
+/// Expansion filters do **not** re-apply [PackageFilterCriteria.packageNames];
+/// `RIPPLE_PACKAGES` narrows seeds only.
+PackageSelection selectPackages(
+  List<RipplePackage> packages, {
+  required RippleConfig config,
+  PackageFilterCriteria criteria = const PackageFilterCriteria(),
+  GraphExpansionFilters? dependentsFilters,
+  GraphExpansionFilters? dependenciesFilters,
+  Map<String, List<RipplePackage>>? groupMembership,
+}) {
+  final seeds = filterPackages(
+    packages,
+    config: config,
+    criteria: criteria,
+    groupMembership: groupMembership,
+  );
+
+  if (dependentsFilters == null && dependenciesFilters == null) {
+    return PackageSelection(
+      seeds: seeds,
+      dependents: const [],
+      dependencies: const [],
+      packages: seeds,
+    );
+  }
+
+  final graph = WorkspaceGraph.fromPackages(packages);
+  final groups =
+      groupMembership ?? resolvePackageGroups(config, packages: packages);
+
+  final dependents = dependentsFilters == null
+      ? const <RipplePackage>[]
+      : _filterClosure(
+          graph.transitiveDependents(seeds),
+          config: config,
+          expansion: dependentsFilters,
+          groupMembership: groups,
+        );
+  final dependencies = dependenciesFilters == null
+      ? const <RipplePackage>[]
+      : _filterClosure(
+          graph.transitiveDependencies(seeds),
+          config: config,
+          expansion: dependenciesFilters,
+          groupMembership: groups,
+        );
+
+  final selected = <String, RipplePackage>{
+    for (final package in seeds) package.relativePath: package,
+    for (final package in dependents) package.relativePath: package,
+    for (final package in dependencies) package.relativePath: package,
+  };
+  final union = selected.values.toList()
+    ..sort((a, b) => a.relativePath.compareTo(b.relativePath));
+
+  return PackageSelection(
+    seeds: seeds,
+    dependents: dependents,
+    dependencies: dependencies,
+    packages: List<RipplePackage>.unmodifiable(union),
+  );
+}
+
+List<RipplePackage> _filterClosure(
+  Set<RipplePackage> closure, {
+  required RippleConfig config,
+  required GraphExpansionFilters expansion,
+  required Map<String, List<RipplePackage>> groupMembership,
+}) {
+  final candidates = closure.toList()
+    ..sort((a, b) => a.relativePath.compareTo(b.relativePath));
+  return filterPackages(
+    candidates,
+    config: config,
+    criteria: PackageFilterCriteria(expression: expansion.expression),
+    groupMembership: groupMembership,
+  );
 }
 
 /// Filters [packages] according to [criteria].

@@ -27,6 +27,7 @@ void main() {
       expect(
         packages.map((package) => package.relativePath).toList(),
         [
+          'packages/app',
           'packages/app/fixtures/decoy',
           'packages/app/mold/decoy',
           'packages/core',
@@ -38,6 +39,7 @@ void main() {
       expect(
         packages.map((package) => package.name).toList(),
         [
+          'app',
           'fixtures_decoy',
           'mold_decoy',
           'core',
@@ -58,11 +60,11 @@ void main() {
 
       expect(
         packages.map((package) => package.relativePath).toList(),
-        ['packages/core', 'packages/ui', 'tool'],
+        ['packages/app', 'packages/core', 'packages/ui', 'tool'],
       );
       expect(
         packages.map((package) => package.name).toList(),
-        ['core', 'ui', 'tool_pkg'],
+        ['app', 'core', 'ui', 'tool_pkg'],
       );
     });
 
@@ -84,7 +86,8 @@ void main() {
       expect(discoverPackages(config), isEmpty);
     });
 
-    test('directories without pubspec.yaml are not packages', () {
+    test('include packages/* selects only immediate package dirs with pubspec',
+        () {
       final config = RippleConfig(
         rootPath: fixtureRoot,
         packages: const RipplePackages(include: ['packages/*']),
@@ -93,10 +96,12 @@ void main() {
       final packages = discoverPackages(config);
       expect(
         packages.map((package) => package.relativePath).toList(),
-        ['packages/core', 'packages/ui'],
+        ['packages/app', 'packages/core', 'packages/ui'],
       );
       expect(
-        packages.any((package) => package.relativePath == 'packages/app'),
+        packages.any(
+          (package) => package.relativePath == 'packages/app/fixtures/decoy',
+        ),
         isFalse,
       );
     });
@@ -205,7 +210,7 @@ environment:
       );
       expect(
         groups['libs']!.map((package) => package.relativePath).toList(),
-        ['packages/core', 'packages/ui'],
+        ['packages/app', 'packages/core', 'packages/ui'],
       );
       expect(
         groups['tooling']!.map((package) => package.relativePath).toList(),
@@ -220,7 +225,7 @@ environment:
       final allMembers = groups.values.expand((packages) => packages);
       for (final package in allMembers) {
         expect(
-          ['packages/core', 'packages/ui', 'tool'],
+          ['packages/app', 'packages/core', 'packages/ui', 'tool'],
           contains(package.relativePath),
         );
       }

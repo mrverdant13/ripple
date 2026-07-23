@@ -64,3 +64,22 @@ scripts:
     exec: printenv RIPPLE_PACKAGE_NAME
     filters:
       - preset: withTestDir
+  pkg.dependents:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    filters:
+      - match: [core]
+    dependentsFilters: []
+  pkg.dependencies:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    filters:
+      - match: [app]
+    dependenciesFilters: []
+  pkg.dependents.constrained:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    filters:
+      - match: [core]
+    dependentsFilters:
+      - match: [ui]
+  pkg.dependents.env:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    dependentsFilters: []

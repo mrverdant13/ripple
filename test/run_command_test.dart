@@ -340,6 +340,38 @@ void main() {
       expect(stdoutLines(result), ['core']);
     });
 
+    test('dependentsFilters: [] expands reverse closure of seeds', () async {
+      final result = await runRipple(['run', 'pkg.dependents']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('dependenciesFilters: [] expands forward closure of seeds', () async {
+      final result = await runRipple(['run', 'pkg.dependencies']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('constrained dependentsFilters keeps matching dependents', () async {
+      final result = await runRipple(['run', 'pkg.dependents.constrained']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core', 'ui']);
+    });
+
+    test('RIPPLE_PACKAGES narrows seeds before dependents expansion', () async {
+      final result = await runRipple(
+        ['run', 'pkg.dependents.env'],
+        environment: const {'RIPPLE_PACKAGES': 'core'},
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      // Seed narrowed to core; expansion still adds app + ui (not tool_pkg).
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
     test('--preset ANDs into seed filters with flat flags', () async {
       final result = await runRipple([
         'run',
