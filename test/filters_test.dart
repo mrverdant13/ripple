@@ -84,7 +84,7 @@ void main() {
         groupMembership: groups,
       );
 
-      expect(names(filtered), ['core', 'ui']);
+      expect(names(filtered), ['app', 'core', 'ui']);
     });
 
     test('packageNames selects by RipplePackage.name', () {
@@ -126,7 +126,7 @@ void main() {
         groupMembership: groups,
       );
 
-      expect(names(filtered), ['core']);
+      expect(names(filtered), ['app', 'core']);
     });
 
     test('empty criteria returns the full discovered set', () {
@@ -136,7 +136,7 @@ void main() {
         groupMembership: groups,
       );
 
-      expect(names(filtered), ['core', 'ui', 'tool_pkg']);
+      expect(names(filtered), ['app', 'core', 'ui', 'tool_pkg']);
     });
   });
 
@@ -271,7 +271,7 @@ void main() {
         groupMembership: groups,
       );
 
-      expect(names(filtered), ['core']);
+      expect(names(filtered), ['app', 'core']);
     });
 
     test('fromNameGlobs builds an and of leaves; intersect ANDs expressions',
@@ -596,6 +596,98 @@ void main() {
           ),
         ),
       );
+    });
+  });
+
+  group('selectPackages — graph expansion', () {
+    test('absent expansion keys return seeds only', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterMatch(['core'])),
+        groupMembership: groups,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(selection.dependents, isEmpty);
+      expect(selection.dependencies, isEmpty);
+      expect(names(selection.packages), ['core']);
+    });
+
+    test('empty dependentsFilters expands the reverse closure', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterMatch(['core'])),
+        dependentsFilters: const GraphExpansionFilters(),
+        groupMembership: groups,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(names(selection.dependents), ['app', 'ui']);
+      expect(names(selection.packages), ['app', 'core', 'ui']);
+    });
+
+    test('empty dependenciesFilters expands the forward closure', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterMatch(['app'])),
+        dependenciesFilters: const GraphExpansionFilters(),
+        groupMembership: groups,
+      );
+
+      expect(names(selection.seeds), ['app']);
+      expect(names(selection.dependencies), ['core', 'ui']);
+      expect(names(selection.packages), ['app', 'core', 'ui']);
+    });
+
+    test('constrained dependentsFilters keeps matching closure members', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterMatch(['core'])),
+        dependentsFilters: const GraphExpansionFilters(
+          expression: FilterMatch(['ui']),
+        ),
+        groupMembership: groups,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(names(selection.dependents), ['ui']);
+      expect(names(selection.packages), ['core', 'ui']);
+    });
+
+    test('RIPPLE_PACKAGES narrows seeds before expansion', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: const PackageFilterCriteria()
+            .withPackageNameSelection(ripplePackagesEnv: 'core'),
+        dependentsFilters: const GraphExpansionFilters(),
+        groupMembership: groups,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(names(selection.dependents), ['app', 'ui']);
+      // Expansion is not re-filtered by RIPPLE_PACKAGES.
+      expect(names(selection.packages), ['app', 'core', 'ui']);
+    });
+
+    test('preset may constrain an expansion closure', () {
+      final selection = selectPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterMatch(['core'])),
+        dependentsFilters: const GraphExpansionFilters(
+          expression: FilterPreset('withTestDir'),
+        ),
+        groupMembership: groups,
+      );
+
+      // Reverse closure is {app, ui}; neither has test/ — only seeds remain.
+      expect(names(selection.dependents), isEmpty);
+      expect(names(selection.packages), ['core']);
     });
   });
 }

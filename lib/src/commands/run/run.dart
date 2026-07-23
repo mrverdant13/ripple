@@ -177,11 +177,13 @@ class RunCommand extends RippleCommand {
     final scriptCriteria =
         PackageFilterCriteria.fromScriptFilters(script.filters);
     final criteria = scriptCriteria.intersect(cliCriteria);
-    final packages = filterPackages(
+    final packages = selectPackages(
       discoverPackages(config),
       config: config,
       criteria: criteria,
-    );
+      dependentsFilters: script.dependentsFilters,
+      dependenciesFilters: script.dependenciesFilters,
+    ).packages;
 
     final failFast = argResults!.flag(failFastFlagName);
     var firstFailure = 0;

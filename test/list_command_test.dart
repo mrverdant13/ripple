@@ -47,6 +47,7 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [
+        'packages/app',
         'packages/core',
         'packages/ui',
         'tool',
@@ -57,7 +58,11 @@ void main() {
       final result = await runRipple(['list', '--group', 'libs']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(stdoutLines(result), ['packages/core', 'packages/ui']);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
     });
 
     test('--match exact names select packages', () async {
@@ -91,7 +96,7 @@ void main() {
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(stdoutLines(result), ['packages/core']);
+      expect(stdoutLines(result), ['packages/app', 'packages/core']);
     });
 
     test('--dir-exists narrows the printed set', () async {

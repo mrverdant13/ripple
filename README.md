@@ -135,9 +135,11 @@ packages:
 Each script must declare **exactly one** of `run:` or `exec:` (XOR):
 
 - **`run:`** — execute once with cwd = the Ripple root. Must not declare
-  `filters`.
+  `filters`, `dependentsFilters`, or `dependenciesFilters`.
 - **`exec:`** — execute once per matching package with cwd = that package.
   Optional `filters` is a **list** of single-key filter nodes (see below).
+  Optional `dependentsFilters` / `dependenciesFilters` expand the selection
+  beyond seed packages (see [Package selection](#package-selection)).
 
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
@@ -175,6 +177,19 @@ scripts:
           - dirExists: [test]
       - noMatch: ['*_test']
       - fileExists: [pubspec.yaml]
+
+  test.dependents:
+    exec: dart test
+    filters:
+      - match: [core]
+    dependentsFilters: []
+
+  test.dependencies:
+    exec: dart test
+    filters:
+      - match: ['*_app']
+    dependenciesFilters:
+      - dirExists: [lib]
 ```
 
 `filters` is list-form only. A top-level list is an implicit **and**. Nested
@@ -190,10 +205,11 @@ scripts:
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 
-`preset` may appear in any filter AST (script `filters`, preset bodies, or
-CLI `--preset`). Unknown names and cyclic references
+`preset` may appear in any filter AST (script `filters`, expansion filters,
+preset bodies, or CLI `--preset`). Unknown names and cyclic references
 (`a` → `b` → `a`) fail with a clear config error. Presets are expression
-fragments only — they cannot declare expansion keys.
+fragments only — they cannot declare expansion keys
+(`dependentsFilters` / `dependenciesFilters`).
 
 `match` / `noMatch` are **package-name** globs (not path globs). They are
 distinct from top-level `packages.include` / `packages.exclude`, which match
@@ -202,10 +218,45 @@ in-memory `and` of the same leaf kinds. CLI `--preset` ANDs named presets into
 that seed expression. CLI `--no-match` follows the `--no-<filter>` /
 `no<Filter>` negation pattern.
 
+### Package selection
+
+For `exec:` scripts under `ripple run`, the final package set is:
+
+```text
+seeds ∪ filteredDependents ∪ filteredDependencies
+```
+
+1. **Seeds** — packages matching script `filters` intersected with CLI flags and
+   `RIPPLE_PACKAGES`.
+2. **Dependents** — when `dependentsFilters` is present, the transitive reverse
+   closure of the seeds over the workspace graph (packages that depend on a
+   seed, directly or indirectly), then constrained by that filter AST.
+3. **Dependencies** — when `dependenciesFilters` is present, the transitive
+   forward closure of the seeds (workspace packages a seed depends on), then
+   constrained by that filter AST.
+
+Key semantics for `dependentsFilters` / `dependenciesFilters`:
+
+| YAML | Behavior |
+| --- | --- |
+| key **absent** | Do not expand that direction |
+| key present as `[]` | Exhaustive closure (all transitive members) |
+| key present as a non-empty list | Keep only closure members that match the AST |
+
+The workspace graph includes an edge `A → B` only when `A` declares `B` in
+`dependencies` or `dev_dependencies` **and** `B` is a discovered workspace
+package. Hosted deps whose name is not in the workspace are ignored. Closures
+are transitive and exclude the seed packages themselves (seeds remain via the
+seed set).
+
+Bare `ripple list` / `ripple exec` are **seed-only** — they never expand
+dependents or dependencies. Graph expansion is script YAML only (`ripple run`
+with an `exec:` script).
+
 Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
-`run` and `exec`, neither, `filters` on a `run:` script, empty command lists,
-unquoted `&&` in a string command, invalid filter nodes, or malformed YAML)
-fail with a clear config error.
+`run` and `exec`, neither, `filters` / expansion keys on a `run:` script, empty
+command lists, unquoted `&&` in a string command, invalid filter nodes, or
+malformed YAML) fail with a clear config error.
 
 There is no cross-script composition (for example referencing other script ids
 inside a list). Compose named scripts from the shell when needed
@@ -216,8 +267,10 @@ inside a list). Compose named scripts from the shell when needed
 ### `ripple list`
 
 Print packages discovered from `packages.include` / `packages.exclude`, after
-optional filters. Output is one relative path per line (relative to the Ripple
-root), sorted for stable review.
+optional seed filters. Output is one relative path per line (relative to the
+Ripple root), sorted for stable review. Does **not** expand dependents or
+dependencies (use an `exec:` script with expansion keys under
+[`ripple run`](#ripple-run)).
 
 ```bash
 ripple list
@@ -305,11 +358,13 @@ Behavior depends on the script kind:
   banners (no package-scope banners).
 - **`exec:`** — for each matching package, runs all list steps in that package
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
-  Script-declared `filters` are intersected with CLI filters and
-  `RIPPLE_PACKAGES`. Package path/name vars are set in addition to
-  `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners are printed once
-  per package; each step also gets its own command start/end banners. The
-  package end banner reports that package's exit code.
+  Script-declared seed `filters` are intersected with CLI filters and
+  `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
+  `dependenciesFilters` expand the set (see
+  [Package selection](#package-selection)). Package path/name vars are set in
+  addition to `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners are
+  printed once per package; each step also gets its own command start/end
+  banners. The package end banner reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
@@ -332,7 +387,8 @@ Child processes receive these variables in the environment (and as `$VAR` /
 
 `RIPPLE_PACKAGES` (exact name allowlist selection filter) is read by Ripple
 itself; it is not injected into child processes beyond normal
-parent-environment inheritance.
+parent-environment inheritance. For `exec:` scripts it narrows **seeds only**
+— dependents/dependencies expansion still runs from those seeds.
 
 ## Non-goals
 

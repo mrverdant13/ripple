@@ -15,10 +15,14 @@ import 'config.dart';
 /// A directory is a package if and only if it contains a `pubspec.yaml`.
 class RipplePackage {
   /// Creates a discovered package.
+  ///
+  /// [pubspec] is the parsed `pubspec.yaml` when available (always set by
+  /// [discoverPackages]). Equality ignores [pubspec].
   const RipplePackage({
     required this.name,
     required this.path,
     required this.relativePath,
+    this.pubspec,
   });
 
   /// Package name from `pubspec.yaml`.
@@ -29,6 +33,9 @@ class RipplePackage {
 
   /// Path relative to the Ripple root (posix-style separators).
   final String relativePath;
+
+  /// Parsed `pubspec.yaml`, when already loaded (e.g. during discovery).
+  final Pubspec? pubspec;
 
   @override
   String toString() => 'RipplePackage($name @ $relativePath)';
@@ -147,11 +154,12 @@ void _tryAddPackage(
     return;
   }
 
-  final name = _readPackageName(pubspecFile);
+  final pubspec = readPackagePubspec(pubspecFile);
   candidates[relativePath] = RipplePackage(
-    name: name,
+    name: pubspec.name,
     path: packageDir,
     relativePath: relativePath,
+    pubspec: pubspec,
   );
 }
 
@@ -176,7 +184,21 @@ bool _matchesAny(String relativePath, List<Glob> globs) {
   return false;
 }
 
-String _readPackageName(File pubspecFile) {
+/// Returns [package.pubspec], or reads and parses `pubspec.yaml` from disk.
+///
+/// Throws [RippleConfigException] when the file cannot be read or parsed.
+Pubspec resolvePackagePubspec(RipplePackage package) {
+  final attached = package.pubspec;
+  if (attached != null) {
+    return attached;
+  }
+  return readPackagePubspec(File(p.join(package.path, 'pubspec.yaml')));
+}
+
+/// Reads and parses [pubspecFile] as a [Pubspec].
+///
+/// Throws [RippleConfigException] when the file cannot be read or parsed.
+Pubspec readPackagePubspec(File pubspecFile) {
   late final String contents;
   try {
     contents = pubspecFile.readAsStringSync();
@@ -187,11 +209,10 @@ String _readPackageName(File pubspecFile) {
   }
 
   try {
-    final pubspec = Pubspec.parse(
+    return Pubspec.parse(
       contents,
       sourceUrl: p.toUri(pubspecFile.path),
     );
-    return pubspec.name;
   } on Object catch (error) {
     throw RippleConfigException(
       'Invalid pubspec at ${pubspecFile.path}: $error',
