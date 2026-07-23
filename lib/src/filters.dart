@@ -237,6 +237,7 @@ List<RipplePackage> filterPackages(
   final selectedNames = criteria.packageNames;
   final nameSet = selectedNames?.toSet();
   final globCache = <String, Glob>{};
+  final pubspecCache = <String, Pubspec>{};
 
   final filtered = <RipplePackage>[];
   for (final package in packages) {
@@ -249,6 +250,7 @@ List<RipplePackage> filterPackages(
           package: package,
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
+          pubspecCache: pubspecCache,
         )) {
       continue;
     }
@@ -278,6 +280,7 @@ bool _matchesExpression(
   required RipplePackage package,
   required Map<String, Set<String>> groupMemberPaths,
   required Map<String, Glob> globCache,
+  required Map<String, Pubspec> pubspecCache,
 }) {
   return switch (expression) {
     FilterAnd(:final children) => children.every(
@@ -286,6 +289,7 @@ bool _matchesExpression(
           package: package,
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
+          pubspecCache: pubspecCache,
         ),
       ),
     FilterOr(:final children) => children.any(
@@ -294,11 +298,13 @@ bool _matchesExpression(
           package: package,
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
+          pubspecCache: pubspecCache,
         ),
       ),
     FilterDirExists(:final paths) => _matchesDirExists(package, paths),
     FilterFileExists(:final paths) => _matchesFileExists(package, paths),
-    FilterDependsOn(:final names) => _matchesDependsOn(package, names),
+    FilterDependsOn(:final names) =>
+      _matchesDependsOn(package, names, pubspecCache),
     FilterGroup(:final name) =>
       groupMemberPaths[name]!.contains(package.relativePath),
     FilterMatch(:final globs) =>
@@ -360,9 +366,36 @@ bool _matchesFileExists(RipplePackage package, List<String> relativeFiles) {
   return true;
 }
 
-bool _matchesDependsOn(RipplePackage package, List<String> dependsOn) {
+bool _matchesDependsOn(
+  RipplePackage package,
+  List<String> dependsOn,
+  Map<String, Pubspec> pubspecCache,
+) {
   if (dependsOn.isEmpty) {
     return true;
+  }
+
+  final pubspec = _cachedPubspec(package, pubspecCache);
+  final declared = <String>{
+    ...pubspec.dependencies.keys,
+    ...pubspec.devDependencies.keys,
+  };
+
+  for (final name in dependsOn) {
+    if (!declared.contains(name)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Pubspec _cachedPubspec(
+  RipplePackage package,
+  Map<String, Pubspec> cache,
+) {
+  final cached = cache[package.path];
+  if (cached != null) {
+    return cached;
   }
 
   final pubspecFile = File(p.join(package.path, 'pubspec.yaml'));
@@ -387,15 +420,6 @@ bool _matchesDependsOn(RipplePackage package, List<String> dependsOn) {
     );
   }
 
-  final declared = <String>{
-    ...pubspec.dependencies.keys,
-    ...pubspec.devDependencies.keys,
-  };
-
-  for (final name in dependsOn) {
-    if (!declared.contains(name)) {
-      return false;
-    }
-  }
-  return true;
+  cache[package.path] = pubspec;
+  return pubspec;
 }
