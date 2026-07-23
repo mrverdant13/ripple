@@ -341,6 +341,7 @@ void main() {
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
+      expect(help, contains('--preset'));
     });
   });
 }

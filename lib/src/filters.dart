@@ -20,8 +20,10 @@ const ripplePackagesEnvVar = 'RIPPLE_PACKAGES';
 /// Criteria used to narrow a discovered package list.
 ///
 /// [expression] is a boolean [FilterExpr] (CLI flags compile to an in-memory
-/// `and` of leaves). [packageNames] is an exact-name allowlist from
-/// `RIPPLE_PACKAGES` (or tests). A package must satisfy both when set.
+/// `and` of leaves and optional [FilterPreset] nodes). [packageNames] is an
+/// exact-name allowlist from `RIPPLE_PACKAGES` (or tests). A package must
+/// satisfy both when set. Preset nodes are resolved via
+/// [resolveFilterPresets] inside [filterPackages].
 class PackageFilterCriteria {
   /// Creates filter criteria.
   ///
@@ -37,7 +39,9 @@ class PackageFilterCriteria {
   ///
   /// Empty flag lists leave those leaves out. Non-empty [match] becomes one
   /// [FilterMatch] leaf (OR within the list). Multiple [groups] become
-  /// separate [FilterGroup] leaves AND'd together.
+  /// separate [FilterGroup] leaves AND'd together. Each name in [presets]
+  /// becomes a [FilterPreset] leaf (AND'd with the rest); unknown names are
+  /// rejected when [filterPackages] resolves presets.
   factory PackageFilterCriteria.fromNameGlobs({
     List<String> match = const [],
     List<String> noMatch = const [],
@@ -45,6 +49,7 @@ class PackageFilterCriteria {
     List<String> fileExists = const [],
     List<String> dependsOn = const [],
     List<String> groups = const [],
+    List<String> presets = const [],
     List<String>? packageNames,
   }) {
     final leaves = <FilterExpr>[
@@ -54,6 +59,7 @@ class PackageFilterCriteria {
       for (final group in groups) FilterGroup(group),
       if (match.isNotEmpty) FilterMatch(match),
       if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
+      for (final preset in presets) FilterPreset(preset),
     ];
     return PackageFilterCriteria(
       expression: _andLeaves(leaves),
@@ -141,6 +147,69 @@ FilterExpr? _andLeaves(List<FilterExpr> leaves) {
   return FilterAnd(List<FilterExpr>.unmodifiable(leaves));
 }
 
+/// Expands every [FilterPreset] in [expression] using [presets].
+///
+/// Throws [RippleConfigException] when a preset name is unknown or when a
+/// preset reference cycle is detected (e.g. `a` → `b` → `a`).
+FilterExpr resolveFilterPresets(
+  FilterExpr expression, {
+  required Map<String, FilterExpr> presets,
+  List<String> stack = const [],
+}) {
+  return switch (expression) {
+    FilterAnd(:final children) => FilterAnd(
+        List<FilterExpr>.unmodifiable([
+          for (final child in children)
+            resolveFilterPresets(child, presets: presets, stack: stack),
+        ]),
+      ),
+    FilterOr(:final children) => FilterOr(
+        List<FilterExpr>.unmodifiable([
+          for (final child in children)
+            resolveFilterPresets(child, presets: presets, stack: stack),
+        ]),
+      ),
+    FilterPreset(:final name) => _resolvePresetReference(
+        name,
+        presets: presets,
+        stack: stack,
+      ),
+    FilterDirExists() ||
+    FilterFileExists() ||
+    FilterDependsOn() ||
+    FilterGroup() ||
+    FilterMatch() ||
+    FilterNoMatch() =>
+      expression,
+  };
+}
+
+FilterExpr _resolvePresetReference(
+  String name, {
+  required Map<String, FilterExpr> presets,
+  required List<String> stack,
+}) {
+  if (stack.contains(name)) {
+    final cycle = [...stack, name].join(' -> ');
+    throw RippleConfigException(
+      'Circular filter preset reference: $cycle',
+    );
+  }
+  final body = presets[name];
+  if (body == null) {
+    final known = presets.keys;
+    final knownList = known.isEmpty ? '(none)' : known.join(', ');
+    throw RippleConfigException(
+      'Unknown filter preset "$name". Known presets: $knownList',
+    );
+  }
+  return resolveFilterPresets(
+    body,
+    presets: presets,
+    stack: [...stack, name],
+  );
+}
+
 /// Parses a comma-separated package name list from [ripplePackagesEnvVar].
 List<String> parsePackageNameList(String? value) {
   if (value == null) {
@@ -187,10 +256,12 @@ List<String>? resolvePackageNameFilter(
 /// Filters [packages] according to [criteria].
 ///
 /// Group membership is resolved via [groupMembership] when provided; otherwise
-/// [resolvePackageGroups] is used. Throws [RippleConfigException] when a
-/// requested group name is not defined in [config], when a provided
-/// [groupMembership] map omits a requested group, or when a [FilterMatch] /
-/// [FilterNoMatch] pattern is not a valid glob.
+/// [resolvePackageGroups] is used. [FilterPreset] nodes are expanded via
+/// [resolveFilterPresets] before matching. Throws [RippleConfigException] when
+/// a requested group name is not defined in [config], when a provided
+/// [groupMembership] map omits a requested group, when a preset is unknown or
+/// cyclic, or when a [FilterMatch] / [FilterNoMatch] pattern is not a valid
+/// glob.
 ///
 /// Order of [packages] is preserved.
 List<RipplePackage> filterPackages(
@@ -203,7 +274,13 @@ List<RipplePackage> filterPackages(
     return List<RipplePackage>.unmodifiable(packages);
   }
 
-  final expression = criteria.expression;
+  final rawExpression = criteria.expression;
+  final expression = rawExpression == null
+      ? null
+      : resolveFilterPresets(
+          rawExpression,
+          presets: config.packages.filtersPresets,
+        );
   final referencedGroups =
       expression == null ? const <String>{} : _collectGroupNames(expression);
 
@@ -270,7 +347,8 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterFileExists() ||
     FilterDependsOn() ||
     FilterMatch() ||
-    FilterNoMatch() =>
+    FilterNoMatch() ||
+    FilterPreset() =>
       const {},
   };
 }
@@ -311,6 +389,10 @@ bool _matchesExpression(
       globs.isEmpty || _matchesAnyName(package.name, globs, globCache),
     FilterNoMatch(:final globs) =>
       globs.isEmpty || !_matchesAnyName(package.name, globs, globCache),
+    // Presets are expanded by [resolveFilterPresets] before matching.
+    FilterPreset(:final name) => throw StateError(
+        'Unresolved filter preset "$name" during evaluation',
+      ),
   };
 }
 

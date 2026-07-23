@@ -48,6 +48,12 @@ class ListCommand extends RippleCommand {
             '(dependencies or dev_dependencies). May be passed multiple '
             'times (AND).',
         valueHelp: 'package',
+      )
+      ..addMultiOption(
+        presetOptionName,
+        help: 'AND a named packages.filtersPresets expression into the '
+            'seed filters. May be passed multiple times.',
+        valueHelp: 'name',
       );
   }
 
@@ -69,6 +75,9 @@ class ListCommand extends RippleCommand {
   /// Option name for `--depends-on`.
   static const dependsOnOptionName = 'depends-on';
 
+  /// Option name for `--preset`.
+  static const presetOptionName = 'preset';
+
   @override
   String get name => 'list';
 
@@ -88,6 +97,7 @@ class ListCommand extends RippleCommand {
       fileExists: argResults!.multiOption(fileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
+      presets: argResults!.multiOption(presetOptionName),
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );

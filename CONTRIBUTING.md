@@ -164,8 +164,9 @@ Prioritize coverage for:
 
 - Glob include/exclude and package discovery
 - Filter combos (`dirExists`, `fileExists`, `dependsOn`, `group`, `match` /
-  `noMatch`, nested `and` / `or`, `--match` / `--no-match`, `RIPPLE_PACKAGES`)
-  and rejection of map-form `filters`
+  `noMatch`, nested `and` / `or`, `preset` / `packages.filtersPresets`,
+  `--match` / `--no-match` / `--preset`, `RIPPLE_PACKAGES`) and rejection of
+  map-form `filters`
 - Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` on a `run:` script)
 - Multi-step `run:` / `exec:` lists (sequential fail-fast; all steps per package)
 - Rejection of unquoted `&&` in string commands

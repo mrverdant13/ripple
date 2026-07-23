@@ -16,6 +16,14 @@ packages:
       - packages/*
     tooling:
       - tool
+  filtersPresets:
+    withTestDir:
+      - dirExists: [test]
+    libsOnly:
+      - group: libs
+    libsWithTest:
+      - preset: libsOnly
+      - dirExists: [test]
 
 scripts:
   root.pwd:
@@ -52,3 +60,7 @@ scripts:
     exec: printenv RIPPLE_PACKAGE_NAME
     filters:
       - dirExists: [test]
+  pkg.preset:
+    exec: printenv RIPPLE_PACKAGE_NAME
+    filters:
+      - preset: withTestDir

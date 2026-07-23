@@ -45,6 +45,7 @@ scripts:
         'core': ['packages/a', 'packages/b'],
         'e2e': ['packages/*/e2e'],
       });
+      expect(config.packages.filtersPresets, isEmpty);
 
       final format = config.scripts['format.ci']!;
       expect(format.kind, ScriptKind.run);
@@ -73,7 +74,176 @@ scripts:
       expect(config.packages.include, isEmpty);
       expect(config.packages.exclude, isEmpty);
       expect(config.packages.groups, isEmpty);
+      expect(config.packages.filtersPresets, isEmpty);
       expect(config.scripts, isEmpty);
+    });
+
+    test('parses filtersPresets and preset filter nodes', () {
+      const yaml = '''
+packages:
+  filtersPresets:
+    e2eTestable:
+      - dependsOn: [test]
+      - dirExists: [e2e]
+    nested:
+      - preset: e2eTestable
+      - match: ['*_app']
+scripts:
+  test.e2e:
+    exec: dart test
+    filters:
+      - preset: e2eTestable
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(
+        config.packages.filtersPresets['e2eTestable'],
+        const FilterAnd([
+          FilterDependsOn(['test']),
+          FilterDirExists(['e2e']),
+        ]),
+      );
+      expect(
+        config.packages.filtersPresets['nested'],
+        const FilterAnd([
+          FilterPreset('e2eTestable'),
+          FilterMatch(['*_app']),
+        ]),
+      );
+      expect(
+        config.scripts['test.e2e']!.filters,
+        const FilterAnd([
+          FilterPreset('e2eTestable'),
+        ]),
+      );
+    });
+
+    test('rejects empty filtersPresets bodies', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  filtersPresets:
+    empty: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('empty'), contains('non-empty')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects null filtersPresets bodies', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  filtersPresets:
+    missing:
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('missing'), contains('non-empty')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-map filtersPresets', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  filtersPresets:
+    - not-a-map
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('filtersPresets'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-string preset filter values', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - preset: [e2e]
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('preset'), contains('must be a string')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects map-form filtersPresets bodies', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  filtersPresets:
+    bad:
+      dirExists: [lib]
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('list of filter expressions'),
+              contains('map-form'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects blank preset names in filter nodes', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - preset: '   '
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('preset'), contains('non-empty')),
+          ),
+        ),
+      );
     });
 
     test('rejects script with both run and exec', () {
@@ -206,7 +376,7 @@ scripts:
   bad:
     exec: dart analyze .
     filters:
-      - preset: e2e
+      - mystery: e2e
 ''',
           rootPath: '/r',
         ),
@@ -214,7 +384,7 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            allOf(contains('unknown key "preset"'), contains('filters[0]')),
+            allOf(contains('unknown key "mystery"'), contains('filters[0]')),
           ),
         ),
       );
