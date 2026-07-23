@@ -85,11 +85,12 @@ class WorkspaceGraph {
     Iterable<RipplePackage> seeds,
     Map<String, List<RipplePackage>> adjacency,
   ) {
-    final seedPaths = {
+    // Pre-seed visited with seeds so closures exclude seeds themselves:
+    // a successful visited.add below can never re-admit a seed path.
+    final visited = {
       for (final seed in seeds) seed.relativePath,
     };
     final result = <String, RipplePackage>{};
-    final visited = Set<String>.of(seedPaths);
     final queue = Queue<RipplePackage>.of(seeds);
 
     while (queue.isNotEmpty) {
@@ -99,9 +100,7 @@ class WorkspaceGraph {
         if (!visited.add(next.relativePath)) {
           continue;
         }
-        if (!seedPaths.contains(next.relativePath)) {
-          result[next.relativePath] = next;
-        }
+        result[next.relativePath] = next;
         queue.add(next);
       }
     }
