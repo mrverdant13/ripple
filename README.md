@@ -97,7 +97,7 @@ Ripple walks upward from the current working directory until it finds
 | Key | Required | Description |
 | --- | --- | --- |
 | `name` | no | Optional display name for the workspace. |
-| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`). |
+| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`). |
 | `scripts` | no | Named scripts keyed by id (ids may contain dots, e.g. `format.ci`). |
 
 ### `packages`
@@ -114,6 +114,10 @@ packages:
     core:
       - packages/a
       - packages/b
+  filtersPresets:
+    e2eTestable:
+      - dependsOn: [test]
+      - dirExists: [e2e]
 ```
 
 - **`include`** — glob patterns relative to the Ripple root for candidate
@@ -122,6 +126,9 @@ packages:
   package when it has a `pubspec.yaml`.
 - **`exclude`** — glob patterns subtracted from include matches.
 - **`groups`** — named sets of path globs used when filtering by group.
+- **`filtersPresets`** — named filter expression fragments reusable via
+  `preset:` nodes (in any filter AST) or CLI `--preset`. Each value is a
+  list-form filter expression (same shape as script `filters`).
 
 ### `scripts`
 
@@ -161,6 +168,7 @@ scripts:
   test.e2e:
     exec: dart test
     filters:
+      - preset: e2eTestable
       - match: ['*_app']
       - or:
           - dependsOn: [test]
@@ -175,17 +183,24 @@ scripts:
 | Key | Value | Semantics |
 | --- | --- | --- |
 | `and` / `or` | list of filter nodes | Boolean combination |
+| `preset` | string | Expand `packages.filtersPresets.<name>` in place |
 | `dirExists` / `fileExists` | list of relative paths | Every path must exist (AND) |
 | `dependsOn` | list of package names | Every name must be a direct dep (AND) |
 | `group` | string | Package must be in that `packages.groups` entry |
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 
+`preset` may appear in any filter AST (script `filters`, preset bodies, or
+CLI `--preset`). Unknown names and cyclic references
+(`a` → `b` → `a`) fail with a clear config error. Presets are expression
+fragments only — they cannot declare expansion keys.
+
 `match` / `noMatch` are **package-name** globs (not path globs). They are
 distinct from top-level `packages.include` / `packages.exclude`, which match
 relative package paths. CLI flat flags (`--match`, `--dir-exists`, …) build an
-in-memory `and` of the same leaf kinds. CLI `--no-match` follows the
-`--no-<filter>` / `no<Filter>` negation pattern.
+in-memory `and` of the same leaf kinds. CLI `--preset` ANDs named presets into
+that seed expression. CLI `--no-match` follows the `--no-<filter>` /
+`no<Filter>` negation pattern.
 
 Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
 `run` and `exec`, neither, `filters` on a `run:` script, empty command lists,
@@ -212,6 +227,7 @@ ripple list --no-match '*_test'
 ripple list --dir-exists test
 ripple list --file-exists README.md
 ripple list --depends-on path
+ripple list --preset e2eTestable
 ```
 
 | Flag | Description |
@@ -222,6 +238,7 @@ ripple list --depends-on path
 | `--dir-exists <path>` | Only packages that contain this relative directory (repeatable, AND). |
 | `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
+| `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 
 `RIPPLE_PACKAGES` (comma-separated **exact** package names, not globs)
 intersects with `--match` / `--no-match` and every other active filter. Running
@@ -283,8 +300,8 @@ Behavior depends on the script kind:
 
 - **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
   Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--match`,
-  `--no-match`, `--dir-exists`, `--file-exists`, `--depends-on`, and
-  `RIPPLE_PACKAGES`) are rejected. Each step gets command start/end stderr
+  `--no-match`, `--dir-exists`, `--file-exists`, `--depends-on`, `--preset`,
+  and `RIPPLE_PACKAGES`) are rejected. Each step gets command start/end stderr
   banners (no package-scope banners).
 - **`exec:`** — for each matching package, runs all list steps in that package
   (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).

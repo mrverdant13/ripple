@@ -58,6 +58,13 @@ class RunCommand extends RippleCommand {
             '(dependencies or dev_dependencies). May be passed multiple '
             'times (AND). Valid only for exec: scripts.',
         valueHelp: 'package',
+      )
+      ..addMultiOption(
+        presetOptionName,
+        help: 'AND a named packages.filtersPresets expression into the '
+            'seed filters. May be passed multiple times. Valid only for '
+            'exec: scripts.',
+        valueHelp: 'name',
       );
   }
 
@@ -81,6 +88,9 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--depends-on`.
   static const dependsOnOptionName = 'depends-on';
+
+  /// Option name for `--preset`.
+  static const presetOptionName = 'preset';
 
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
@@ -123,6 +133,7 @@ class RunCommand extends RippleCommand {
       fileExists: argResults!.multiOption(fileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
+      presets: argResults!.multiOption(presetOptionName),
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -133,7 +144,7 @@ class RunCommand extends RippleCommand {
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
           'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
-          '--depends-on, and unset $ripplePackagesEnvVar.',
+          '--depends-on, --preset, and unset $ripplePackagesEnvVar.',
         );
       }
 

@@ -115,6 +115,33 @@ void main() {
       expect(stdoutLines(result), ['packages/ui']);
     });
 
+    test('--preset narrows using packages.filtersPresets', () async {
+      final result = await runRipple(['list', '--preset', 'withTestDir']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
+    test('--preset ANDs with flat flags', () async {
+      final result = await runRipple([
+        'list',
+        '--preset',
+        'libsOnly',
+        '--dir-exists',
+        'test',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
+    test('unknown --preset fails with a clear error', () async {
+      final result = await runRipple(['list', '--preset', 'missing']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('Unknown filter preset "missing"'));
+    });
+
     test('combines filters with intersection semantics', () async {
       final result = await runRipple([
         'list',
@@ -186,6 +213,7 @@ void main() {
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
+      expect(help, contains('--preset'));
     });
   });
 }

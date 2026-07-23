@@ -333,6 +333,40 @@ void main() {
       expect(stdoutLines(result), ['core']);
     });
 
+    test('script preset filters select matching packages', () async {
+      final result = await runRipple(['run', 'pkg.preset']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core']);
+    });
+
+    test('--preset ANDs into seed filters with flat flags', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.name',
+        '--preset',
+        'libsOnly',
+        '--dir-exists',
+        'test',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core']);
+    });
+
+    test('run: script rejects --preset', () async {
+      final result = await runRipple([
+        'run',
+        'root.pwd',
+        '--preset',
+        'withTestDir',
+      ]);
+
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('does not accept package filters'));
+      expect(result.stderr, contains('--preset'));
+    });
+
     test('without --fail-fast continues after failures', () async {
       final result = await runRipple([
         'run',
@@ -393,6 +427,7 @@ void main() {
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
+      expect(help, contains('--preset'));
     });
   });
 }

@@ -310,6 +310,70 @@ void main() {
     });
   });
 
+  group('filterPackages — presets', () {
+    test('resolves a preset referenced from script filters', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPreset('withTestDir')),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
+    test('resolves nested presets', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPreset('libsWithTest')),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['core']);
+    });
+
+    test('fromNameGlobs --preset ANDs with flat flags', () {
+      final criteriaWithPreset = PackageFilterCriteria.fromNameGlobs(
+        match: ['*'],
+        presets: ['withTestDir'],
+      );
+
+      expect(
+        criteriaWithPreset.expression,
+        const FilterAnd([
+          FilterMatch(['*']),
+          FilterPreset('withTestDir'),
+        ]),
+      );
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteriaWithPreset,
+        groupMembership: groups,
+      );
+      expect(names(filtered), ['core']);
+    });
+
+    test('resolveFilterPresets expands nested presets', () {
+      final resolved = resolveFilterPresets(
+        const FilterPreset('libsWithTest'),
+        presets: config.packages.filtersPresets,
+      );
+
+      expect(
+        resolved,
+        const FilterAnd([
+          FilterAnd([
+            FilterGroup('libs'),
+          ]),
+          FilterDirExists(['test']),
+        ]),
+      );
+    });
+  });
+
   group('package name selection', () {
     test('RIPPLE_PACKAGES intersects with other filters', () {
       final nameCriteria = criteria(const FilterGroup('libs'))
@@ -473,6 +537,62 @@ void main() {
             (error) => error.message,
             'message',
             contains('Invalid package-name glob "{a"'),
+          ),
+        ),
+      );
+    });
+
+    test('unknown preset fails with a clear error', () {
+      expect(
+        () => filterPackages(
+          packages,
+          config: config,
+          criteria: criteria(const FilterPreset('missing')),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('Unknown filter preset "missing"'),
+              contains('Known presets:'),
+              contains('withTestDir'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('circular preset references fail with a clear error', () {
+      final cyclicConfig = RippleConfig(
+        rootPath: config.rootPath,
+        packages: RipplePackages(
+          include: config.packages.include,
+          exclude: config.packages.exclude,
+          groups: config.packages.groups,
+          filtersPresets: {
+            'a': const FilterPreset('b'),
+            'b': const FilterPreset('a'),
+          },
+        ),
+      );
+
+      expect(
+        () => filterPackages(
+          packages,
+          config: cyclicConfig,
+          criteria: criteria(const FilterPreset('a')),
+          groupMembership: groups,
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('Circular filter preset reference'),
+              contains('a -> b -> a'),
+            ),
           ),
         ),
       );

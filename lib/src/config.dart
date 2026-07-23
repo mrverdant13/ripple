@@ -33,10 +33,11 @@ enum ScriptKind {
   exec,
 }
 
-/// Boolean package filter expression declared on an `exec:` script.
+/// Boolean package filter expression declared on an `exec:` script or preset.
 ///
-/// YAML `filters` is a **list** of single-key maps. A top-level list is an
-/// implicit [FilterAnd]. Nested `and` / `or` nodes are allowed. Flat map
+/// YAML `filters` / preset bodies are a **list** of single-key maps. A
+/// top-level list is an implicit [FilterAnd]. Nested `and` / `or` nodes and
+/// [FilterPreset] references are allowed. Flat map
 /// `filters: { dirExists: …, match: … }` is rejected.
 sealed class FilterExpr {
   /// Creates a filter expression node.
@@ -171,6 +172,24 @@ final class FilterNoMatch extends FilterExpr {
   int get hashCode => Object.hashAll(globs);
 }
 
+/// Reference to a named expression under `packages.filtersPresets`.
+///
+/// Resolved (with cycle detection) before evaluation; see
+/// [resolveFilterPresets] in `filters.dart`.
+final class FilterPreset extends FilterExpr {
+  /// Creates a `preset` node.
+  const FilterPreset(this.name);
+
+  /// Preset name from `packages.filtersPresets`.
+  final String name;
+
+  @override
+  bool operator ==(Object other) => other is FilterPreset && other.name == name;
+
+  @override
+  int get hashCode => name.hashCode;
+}
+
 bool _listEquals<T>(List<T> a, List<T> b) {
   if (identical(a, b)) {
     return true;
@@ -224,11 +243,12 @@ class RippleScript {
 
 /// Package discovery settings under `packages:`.
 class RipplePackages {
-  /// Creates package include/exclude/group settings.
+  /// Creates package include/exclude/group/preset settings.
   const RipplePackages({
     this.include = const [],
     this.exclude = const [],
     this.groups = const {},
+    this.filtersPresets = const {},
   });
 
   /// Glob patterns (relative to the Ripple root) for candidate package dirs.
@@ -239,6 +259,11 @@ class RipplePackages {
 
   /// Named sets of path globs for group filtering.
   final Map<String, List<String>> groups;
+
+  /// Named filter expression fragments for `preset:` nodes and `--preset`.
+  ///
+  /// Each value is a list-form filter expression (implicit [FilterAnd]).
+  final Map<String, FilterExpr> filtersPresets;
 }
 
 /// Typed model for a loaded `ripple.yaml`.
@@ -257,7 +282,7 @@ class RippleConfig {
   /// Optional display name from the top-level `name` key.
   final String? name;
 
-  /// Package include/exclude/group settings.
+  /// Package include/exclude/group/preset settings.
   final RipplePackages packages;
 
   /// Named scripts keyed by script id.
@@ -378,7 +403,56 @@ RipplePackages _packagesFromValue(
     include: _stringList(map, 'include', 'RipplePackages'),
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
     groups: _groupsFromValue(map['groups'], map),
+    filtersPresets: _filtersPresetsFromValue(map['filtersPresets'], map),
   );
+}
+
+Map<String, FilterExpr> _filtersPresetsFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const {};
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'filtersPresets',
+      'RipplePackages',
+      'Expected a map of preset name to filter expression lists',
+    );
+  }
+  final presets = <String, FilterExpr>{};
+  final Map<dynamic, dynamic> map = value;
+  for (final entry in map.entries) {
+    final key = entry.key;
+    if (key is! String) {
+      throw CheckedFromJsonException(
+        map,
+        key?.toString(),
+        'RipplePackages',
+        'Filter preset names must be strings',
+      );
+    }
+    final expression = _filtersFromValue(
+      entry.value,
+      map,
+      keyName: key,
+      className: 'RipplePackages.filtersPresets',
+      emptyListMessage: 'Filter preset "$key" must be a non-empty list of '
+          'filter expressions',
+    );
+    if (expression == null) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RipplePackages.filtersPresets',
+        'Filter preset "$key" must be a non-empty list of filter expressions',
+      );
+    }
+    presets[key] = expression;
+  }
+  return Map<String, FilterExpr>.unmodifiable(presets);
 }
 
 Map<String, List<String>> _groupsFromValue(
@@ -498,7 +572,14 @@ RippleScript _scriptFromValue(
     name: name,
     kind: hasRun ? ScriptKind.run : ScriptKind.exec,
     commands: commands,
-    filters: hasExec ? _filtersFromValue(filtersValue, map) : null,
+    filters: hasExec
+        ? _filtersFromValue(
+            filtersValue,
+            map,
+            keyName: 'filters',
+            className: 'RippleScript',
+          )
+        : null,
   );
 }
 
@@ -621,30 +702,41 @@ bool _containsUnquotedAnd(String command) {
 
 FilterExpr? _filtersFromValue(
   Object? value,
-  Map<dynamic, dynamic> parent,
-) {
+  Map<dynamic, dynamic> parent, {
+  String keyName = 'filters',
+  String className = 'RippleScript',
+  String? emptyListMessage,
+}) {
   if (value == null) {
     return null;
   }
   if (value is Map) {
     throw CheckedFromJsonException(
       parent,
-      'filters',
-      'RippleScript',
+      keyName,
+      className,
       'Expected a list of filter expressions; map-form filters are not '
-          'supported. Use a YAML list of single-key maps, e.g. '
-          '`filters: [{ dirExists: [lib] }, { match: ["*_api"] }]`',
+      'supported. Use a YAML list of single-key maps, e.g. '
+      '`filters: [{ dirExists: [lib] }, { match: ["*_api"] }]`',
     );
   }
   if (value is! List) {
     throw CheckedFromJsonException(
       parent,
-      'filters',
-      'RippleScript',
+      keyName,
+      className,
       'Expected a list of filter expressions',
     );
   }
   if (value.isEmpty) {
+    if (emptyListMessage != null) {
+      throw CheckedFromJsonException(
+        parent,
+        keyName,
+        className,
+        emptyListMessage,
+      );
+    }
     return null;
   }
   return FilterAnd(
@@ -654,7 +746,7 @@ FilterExpr? _filtersFromValue(
           _filterNodeFromValue(
             value[i],
             parent: parent,
-            path: 'filters[$i]',
+            path: '$keyName[$i]',
           ),
       ],
     ),
@@ -681,7 +773,7 @@ FilterExpr _filterNodeFromValue(
       'filters',
       'FilterExpr',
       'Invalid filter at $path: expected exactly one key '
-          '(and, or, match, noMatch, group, dependsOn, dirExists, '
+          '(and, or, preset, match, noMatch, group, dependsOn, dirExists, '
           'fileExists), found ${map.length}',
     );
   }
@@ -724,13 +816,33 @@ FilterExpr _filterNodeFromValue(
         );
       }
       return FilterGroup(groupValue);
+    case 'preset':
+      final presetValue = entry.value;
+      if (presetValue is! String) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `preset` must be a string',
+        );
+      }
+      if (presetValue.trim().isEmpty) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `preset` must be a non-empty string',
+        );
+      }
+      return FilterPreset(presetValue);
     default:
       throw CheckedFromJsonException(
         parent,
         'filters',
         'FilterExpr',
         'Invalid filter at $path: unknown key "$key". Expected one of: '
-            'and, or, match, noMatch, group, dependsOn, dirExists, fileExists',
+            'and, or, preset, match, noMatch, group, dependsOn, dirExists, '
+            'fileExists',
       );
   }
 }
