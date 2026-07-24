@@ -187,6 +187,59 @@ void _writePackageScopeBanner(
   terminalLineState.atLineStart = true;
 }
 
+void _announceScopeStart(
+  String scopeLabel, {
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatPackageScopeStart(scopeLabel, color: color),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
+void _announceScopeEnd(
+  String scopeLabel, {
+  required int exitCode,
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatPackageScopeEnd(
+      scopeLabel,
+      exitCode: exitCode,
+      color: color,
+    ),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
 /// Writes the start banner for a package command block.
 ///
 /// Uses [formatPackageScopeLabel] (`name @ relativePath`). Written to
@@ -202,22 +255,13 @@ void announcePackageScopeStart(
   bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
-  final out = sink ?? stderr;
-  final color = packageScopeBannersUseColor(
+  _announceScopeStart(
+    formatPackageScopeLabel(package),
+    sink: sink,
     forceColor: forceColor,
-    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    hasTerminal: hasTerminal,
+    forceEnsureLineStart: forceEnsureLineStart,
     environment: environment,
-  );
-  _writePackageScopeBanner(
-    formatPackageScopeStart(
-      formatPackageScopeLabel(package),
-      color: color,
-    ),
-    sink: out,
-    ensureLineStart: shouldEnsureBannerLineStart(
-      out,
-      forceEnsureLineStart: forceEnsureLineStart,
-    ),
   );
 }
 
@@ -231,23 +275,14 @@ void announcePackageScopeEnd(
   bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
-  final out = sink ?? stderr;
-  final color = packageScopeBannersUseColor(
+  _announceScopeEnd(
+    formatPackageScopeLabel(package),
+    exitCode: exitCode,
+    sink: sink,
     forceColor: forceColor,
-    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    hasTerminal: hasTerminal,
+    forceEnsureLineStart: forceEnsureLineStart,
     environment: environment,
-  );
-  _writePackageScopeBanner(
-    formatPackageScopeEnd(
-      formatPackageScopeLabel(package),
-      exitCode: exitCode,
-      color: color,
-    ),
-    sink: out,
-    ensureLineStart: shouldEnsureBannerLineStart(
-      out,
-      forceEnsureLineStart: forceEnsureLineStart,
-    ),
   );
 }
 
@@ -259,19 +294,13 @@ void announceRootScopeStart({
   bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
-  final out = sink ?? stderr;
-  final color = packageScopeBannersUseColor(
+  _announceScopeStart(
+    rootScopeLabel,
+    sink: sink,
     forceColor: forceColor,
-    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    hasTerminal: hasTerminal,
+    forceEnsureLineStart: forceEnsureLineStart,
     environment: environment,
-  );
-  _writePackageScopeBanner(
-    formatPackageScopeStart(rootScopeLabel, color: color),
-    sink: out,
-    ensureLineStart: shouldEnsureBannerLineStart(
-      out,
-      forceEnsureLineStart: forceEnsureLineStart,
-    ),
   );
 }
 
@@ -284,23 +313,14 @@ void announceRootScopeEnd({
   bool? forceEnsureLineStart,
   Map<String, String>? environment,
 }) {
-  final out = sink ?? stderr;
-  final color = packageScopeBannersUseColor(
+  _announceScopeEnd(
+    rootScopeLabel,
+    exitCode: exitCode,
+    sink: sink,
     forceColor: forceColor,
-    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    hasTerminal: hasTerminal,
+    forceEnsureLineStart: forceEnsureLineStart,
     environment: environment,
-  );
-  _writePackageScopeBanner(
-    formatPackageScopeEnd(
-      rootScopeLabel,
-      exitCode: exitCode,
-      color: color,
-    ),
-    sink: out,
-    ensureLineStart: shouldEnsureBannerLineStart(
-      out,
-      forceEnsureLineStart: forceEnsureLineStart,
-    ),
   );
 }
 
