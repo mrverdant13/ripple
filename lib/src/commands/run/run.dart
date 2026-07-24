@@ -156,7 +156,6 @@ class RunCommand extends RippleCommand {
         ..remove(ripplePackageNameEnvVar)
         ..addAll(vars);
       announceRootScopeStart();
-      var rootExitCode = 0;
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
@@ -173,13 +172,12 @@ class RunCommand extends RippleCommand {
           exitCode: result.exitCode,
         );
         if (result.exitCode != 0) {
-          rootExitCode = result.exitCode;
-          announceRootScopeEnd(exitCode: rootExitCode);
+          announceRootScopeEnd(exitCode: result.exitCode);
           exitCode = result.exitCode;
           return;
         }
       }
-      announceRootScopeEnd(exitCode: rootExitCode);
+      announceRootScopeEnd(exitCode: 0);
       return;
     }
 
