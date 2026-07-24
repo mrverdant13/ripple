@@ -121,12 +121,19 @@ bool packageScopeBannersUseColor({
   return hasTerminal ?? false;
 }
 
+/// Scope label used for root `run:` banners (cwd identity, not a package).
+const rootScopeLabel = '(root)';
+
+/// Package scope label for banners: `{pubspec.name} @ {relativePath}`.
+String formatPackageScopeLabel(RipplePackage package) =>
+    '${package.name} @ ${package.relativePath}';
+
 /// Formats the start-of-package banner line (no trailing newline).
 String formatPackageScopeStart(
-  String relativePath, {
+  String scopeLabel, {
   required bool color,
 }) {
-  final body = '[ripple] ▶ $relativePath';
+  final body = '[ripple] ▶ $scopeLabel';
   if (!color) {
     return body;
   }
@@ -135,11 +142,11 @@ String formatPackageScopeStart(
 
 /// Formats the end-of-package banner line (no trailing newline).
 String formatPackageScopeEnd(
-  String relativePath, {
+  String scopeLabel, {
   required int exitCode,
   required bool color,
 }) {
-  final body = '[ripple] ■ $relativePath  (exit $exitCode)';
+  final body = '[ripple] ■ $scopeLabel  (exit $exitCode)';
   if (!color) {
     return body;
   }
@@ -182,7 +189,7 @@ void _writePackageScopeBanner(
 
 /// Writes the start banner for a package command block.
 ///
-/// Uses [package.relativePath] (same form as `ripple list`). Written to
+/// Uses [formatPackageScopeLabel] (`name @ relativePath`). Written to
 /// [sink] (stderr by default) so banners do not mix into child stdout.
 ///
 /// When stdout and stderr share a TTY, inserts a newline first if the previous
@@ -202,7 +209,10 @@ void announcePackageScopeStart(
     environment: environment,
   );
   _writePackageScopeBanner(
-    formatPackageScopeStart(package.relativePath, color: color),
+    formatPackageScopeStart(
+      formatPackageScopeLabel(package),
+      color: color,
+    ),
     sink: out,
     ensureLineStart: shouldEnsureBannerLineStart(
       out,
@@ -229,7 +239,60 @@ void announcePackageScopeEnd(
   );
   _writePackageScopeBanner(
     formatPackageScopeEnd(
-      package.relativePath,
+      formatPackageScopeLabel(package),
+      exitCode: exitCode,
+      color: color,
+    ),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
+/// Writes the start banner for a root `run:` script block ([rootScopeLabel]).
+void announceRootScopeStart({
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatPackageScopeStart(rootScopeLabel, color: color),
+    sink: out,
+    ensureLineStart: shouldEnsureBannerLineStart(
+      out,
+      forceEnsureLineStart: forceEnsureLineStart,
+    ),
+  );
+}
+
+/// Writes the end banner for a root `run:` script block, including [exitCode].
+void announceRootScopeEnd({
+  required int exitCode,
+  StringSink? sink,
+  bool? forceColor,
+  bool? hasTerminal,
+  bool? forceEnsureLineStart,
+  Map<String, String>? environment,
+}) {
+  final out = sink ?? stderr;
+  final color = packageScopeBannersUseColor(
+    forceColor: forceColor,
+    hasTerminal: resolveBannerHasTerminal(out, hasTerminal: hasTerminal),
+    environment: environment,
+  );
+  _writePackageScopeBanner(
+    formatPackageScopeEnd(
+      rootScopeLabel,
       exitCode: exitCode,
       color: color,
     ),
@@ -263,11 +326,15 @@ String _quoteCommandArg(String arg) {
 final _safeCommandArg = RegExp(r'^[A-Za-z0-9_./:=+@%,-]+$');
 
 /// Formats the start-of-command banner line (no trailing newline).
+///
+/// [scopeLabel] is the pubspec name for package commands, or [rootScopeLabel]
+/// for root `run:` scripts.
 String formatCommandStart(
   List<String> command, {
+  required String scopeLabel,
   required bool color,
 }) {
-  final body = '[ripple] \$ ${formatCommandLine(command)}';
+  final body = '[ripple][$scopeLabel] \$ ${formatCommandLine(command)}';
   if (!color) {
     return body;
   }
@@ -275,12 +342,17 @@ String formatCommandStart(
 }
 
 /// Formats the end-of-command banner line (no trailing newline).
+///
+/// [scopeLabel] is the pubspec name for package commands, or [rootScopeLabel]
+/// for root `run:` scripts.
 String formatCommandEnd(
   List<String> command, {
+  required String scopeLabel,
   required int exitCode,
   required bool color,
 }) {
-  final body = '[ripple] \$ ${formatCommandLine(command)}  (exit $exitCode)';
+  final body =
+      '[ripple][$scopeLabel] \$ ${formatCommandLine(command)}  (exit $exitCode)';
   if (!color) {
     return body;
   }
@@ -292,8 +364,12 @@ String formatCommandEnd(
 ///
 /// Printed to [sink] (stderr by default) immediately before [runProcess] so
 /// users can match each command to its following child output.
+///
+/// [scopeLabel] stamps the active package name or [rootScopeLabel] onto the
+/// banner line.
 void announceCommandStart(
   List<String> command, {
+  required String scopeLabel,
   StringSink? sink,
   bool? forceColor,
   bool? hasTerminal,
@@ -307,7 +383,7 @@ void announceCommandStart(
     environment: environment,
   );
   _writePackageScopeBanner(
-    formatCommandStart(command, color: color),
+    formatCommandStart(command, scopeLabel: scopeLabel, color: color),
     sink: out,
     ensureLineStart: shouldEnsureBannerLineStart(
       out,
@@ -317,8 +393,12 @@ void announceCommandStart(
 }
 
 /// Writes the end banner for a single command invocation, including [exitCode].
+///
+/// [scopeLabel] stamps the active package name or [rootScopeLabel] onto the
+/// banner line.
 void announceCommandEnd(
   List<String> command, {
+  required String scopeLabel,
   required int exitCode,
   StringSink? sink,
   bool? forceColor,
@@ -333,7 +413,12 @@ void announceCommandEnd(
     environment: environment,
   );
   _writePackageScopeBanner(
-    formatCommandEnd(command, exitCode: exitCode, color: color),
+    formatCommandEnd(
+      command,
+      scopeLabel: scopeLabel,
+      exitCode: exitCode,
+      color: color,
+    ),
     sink: out,
     ensureLineStart: shouldEnsureBannerLineStart(
       out,

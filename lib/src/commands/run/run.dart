@@ -155,22 +155,31 @@ class RunCommand extends RippleCommand {
         ..remove(ripplePackagePathEnvVar)
         ..remove(ripplePackageNameEnvVar)
         ..addAll(vars);
+      announceRootScopeStart();
+      var rootExitCode = 0;
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
-        announceCommandStart(resolvedCommand);
+        announceCommandStart(resolvedCommand, scopeLabel: rootScopeLabel);
         final result = await _runCommand(
           resolvedCommand,
           workingDirectory: config.rootPath,
           environment: environment,
           includeParentEnvironment: false,
         );
-        announceCommandEnd(resolvedCommand, exitCode: result.exitCode);
+        announceCommandEnd(
+          resolvedCommand,
+          scopeLabel: rootScopeLabel,
+          exitCode: result.exitCode,
+        );
         if (result.exitCode != 0) {
+          rootExitCode = result.exitCode;
+          announceRootScopeEnd(exitCode: rootExitCode);
           exitCode = result.exitCode;
           return;
         }
       }
+      announceRootScopeEnd(exitCode: rootExitCode);
       return;
     }
 
@@ -198,13 +207,17 @@ class RunCommand extends RippleCommand {
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = substituteRippleVars(command, vars: vars);
-        announceCommandStart(resolvedCommand);
+        announceCommandStart(resolvedCommand, scopeLabel: package.name);
         final result = await _runCommand(
           resolvedCommand,
           workingDirectory: package.path,
           environment: vars,
         );
-        announceCommandEnd(resolvedCommand, exitCode: result.exitCode);
+        announceCommandEnd(
+          resolvedCommand,
+          scopeLabel: package.name,
+          exitCode: result.exitCode,
+        );
 
         if (result.exitCode != 0) {
           packageExitCode = result.exitCode;

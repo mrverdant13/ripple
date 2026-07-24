@@ -94,14 +94,14 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stderrLines(result), [
-        '[ripple] ▶ packages/core',
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME',
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
-        '[ripple] ■ packages/core  (exit 0)',
-        '[ripple] ▶ packages/ui',
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME',
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
-        '[ripple] ■ packages/ui  (exit 0)',
+        '[ripple] ▶ core @ packages/core',
+        '[ripple][core] \$ printenv RIPPLE_PACKAGE_NAME',
+        '[ripple][core] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
+        '[ripple] ■ core @ packages/core  (exit 0)',
+        '[ripple] ▶ ui @ packages/ui',
+        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME',
+        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
+        '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
       expect(stdoutLines(result), ['core', 'ui']);
     });
@@ -150,14 +150,14 @@ void main() {
 
       expect(result.exitCode, 3);
       expect(stderrLines(result), [
-        '[ripple] ▶ packages/core',
-        '[ripple] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'',
-        '[ripple] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'  (exit 3)',
-        '[ripple] ■ packages/core  (exit 3)',
-        '[ripple] ▶ packages/ui',
-        '[ripple] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'',
-        '[ripple] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'  (exit 0)',
-        '[ripple] ■ packages/ui  (exit 0)',
+        '[ripple] ▶ core @ packages/core',
+        '[ripple][core] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'',
+        '[ripple][core] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'  (exit 3)',
+        '[ripple] ■ core @ packages/core  (exit 3)',
+        '[ripple] ▶ ui @ packages/ui',
+        '[ripple][ui] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'',
+        '[ripple][ui] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'  (exit 0)',
+        '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
     });
 
