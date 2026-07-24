@@ -57,17 +57,16 @@ void main() {
       expect(stdoutLines(result), [p.normalize(fixtureRoot)]);
     });
 
-    test('run: script announces command banners without package scope',
-        () async {
+    test('run: script announces root scope and command banners', () async {
       final result = await runRipple(['run', 'root.pwd']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stderrLines(result), [
-        '[ripple] \$ pwd',
-        '[ripple] \$ pwd  (exit 0)',
+        '[ripple] ▶ (root)',
+        '[ripple][(root)] \$ pwd',
+        '[ripple][(root)] \$ pwd  (exit 0)',
+        '[ripple] ■ (root)  (exit 0)',
       ]);
-      expect(result.stderr, isNot(contains('▶')));
-      expect(result.stderr, isNot(contains('■')));
     });
 
     test('run: script sets RIPPLE_ROOT_PATH without package vars', () async {
@@ -121,10 +120,12 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(result.stdout, 'first-second');
       expect(stderrLines(result), [
-        '[ripple] \$ printf %s first-',
-        '[ripple] \$ printf %s first-  (exit 0)',
-        '[ripple] \$ printf %s second',
-        '[ripple] \$ printf %s second  (exit 0)',
+        '[ripple] ▶ (root)',
+        '[ripple][(root)] \$ printf %s first-',
+        '[ripple][(root)] \$ printf %s first-  (exit 0)',
+        '[ripple][(root)] \$ printf %s second',
+        '[ripple][(root)] \$ printf %s second  (exit 0)',
+        '[ripple] ■ (root)  (exit 0)',
       ]);
     });
 
@@ -135,8 +136,10 @@ void main() {
       expect(result.stdout, 'before-');
       expect(result.stdout, isNot(contains('after')));
       expect(stderrLines(result), [
-        '[ripple] \$ sh -c \'printf %s before-; exit 7\'',
-        '[ripple] \$ sh -c \'printf %s before-; exit 7\'  (exit 7)',
+        '[ripple] ▶ (root)',
+        '[ripple][(root)] \$ sh -c \'printf %s before-; exit 7\'',
+        '[ripple][(root)] \$ sh -c \'printf %s before-; exit 7\'  (exit 7)',
+        '[ripple] ■ (root)  (exit 7)',
       ]);
     });
 
@@ -193,18 +196,18 @@ void main() {
 
         expect(result.exitCode, 0, reason: result.stderr as String);
         expect(stderrLines(result), [
-          '[ripple] ▶ packages/core',
-          '[ripple] \$ printf %s core-',
-          '[ripple] \$ printf %s core-  (exit 0)',
-          '[ripple] \$ printf %s step2',
-          '[ripple] \$ printf %s step2  (exit 0)',
-          '[ripple] ■ packages/core  (exit 0)',
-          '[ripple] ▶ packages/ui',
-          '[ripple] \$ printf %s ui-',
-          '[ripple] \$ printf %s ui-  (exit 0)',
-          '[ripple] \$ printf %s step2',
-          '[ripple] \$ printf %s step2  (exit 0)',
-          '[ripple] ■ packages/ui  (exit 0)',
+          '[ripple] ▶ core @ packages/core',
+          '[ripple][core] \$ printf %s core-',
+          '[ripple][core] \$ printf %s core-  (exit 0)',
+          '[ripple][core] \$ printf %s step2',
+          '[ripple][core] \$ printf %s step2  (exit 0)',
+          '[ripple] ■ core @ packages/core  (exit 0)',
+          '[ripple] ▶ ui @ packages/ui',
+          '[ripple][ui] \$ printf %s ui-',
+          '[ripple][ui] \$ printf %s ui-  (exit 0)',
+          '[ripple][ui] \$ printf %s step2',
+          '[ripple][ui] \$ printf %s step2  (exit 0)',
+          '[ripple] ■ ui @ packages/ui  (exit 0)',
         ]);
         expect(result.stdout, 'core-step2ui-step2');
       },
@@ -222,20 +225,20 @@ void main() {
 
       expect(result.exitCode, 5);
       expect(stderrLines(result), [
-        '[ripple] ▶ packages/core',
-        '[ripple] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
+        '[ripple] ▶ core @ packages/core',
+        '[ripple][core] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
             'then exit 5; fi\'',
-        '[ripple] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
+        '[ripple][core] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
             'then exit 5; fi\'  (exit 5)',
-        '[ripple] ■ packages/core  (exit 5)',
-        '[ripple] ▶ packages/ui',
-        '[ripple] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
+        '[ripple] ■ core @ packages/core  (exit 5)',
+        '[ripple] ▶ ui @ packages/ui',
+        '[ripple][ui] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
             'then exit 5; fi\'',
-        '[ripple] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
+        '[ripple][ui] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
             'then exit 5; fi\'  (exit 0)',
-        '[ripple] \$ printf %s should-not-run',
-        '[ripple] \$ printf %s should-not-run  (exit 0)',
-        '[ripple] ■ packages/ui  (exit 0)',
+        '[ripple][ui] \$ printf %s should-not-run',
+        '[ripple][ui] \$ printf %s should-not-run  (exit 0)',
+        '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
     });
 

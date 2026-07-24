@@ -73,34 +73,48 @@ void main() {
       terminalLineState.atLineStart = true;
     });
 
+    test('formatPackageScopeLabel joins name and relative path', () {
+      expect(formatPackageScopeLabel(package), 'ui @ packages/ui');
+    });
+
     test('formatPackageScopeStart / End use plain text without color', () {
       expect(
-        formatPackageScopeStart('packages/ui', color: false),
-        '[ripple] ▶ packages/ui',
+        formatPackageScopeStart('ui @ packages/ui', color: false),
+        '[ripple] ▶ ui @ packages/ui',
       );
       expect(
-        formatPackageScopeEnd('packages/ui', exitCode: 0, color: false),
-        '[ripple] ■ packages/ui  (exit 0)',
+        formatPackageScopeEnd('ui @ packages/ui', exitCode: 0, color: false),
+        '[ripple] ■ ui @ packages/ui  (exit 0)',
       );
       expect(
-        formatPackageScopeEnd('packages/ui', exitCode: 3, color: false),
-        '[ripple] ■ packages/ui  (exit 3)',
+        formatPackageScopeEnd('ui @ packages/ui', exitCode: 3, color: false),
+        '[ripple] ■ ui @ packages/ui  (exit 3)',
+      );
+      expect(
+        formatPackageScopeStart(rootScopeLabel, color: false),
+        '[ripple] ▶ (root)',
+      );
+      expect(
+        formatPackageScopeEnd(rootScopeLabel, exitCode: 0, color: false),
+        '[ripple] ■ (root)  (exit 0)',
       );
     });
 
     test('formatPackageScopeStart / End wrap ANSI when color is on', () {
       expect(
-        formatPackageScopeStart('packages/ui', color: true),
-        contains('[ripple] ▶ packages/ui'),
+        formatPackageScopeStart('ui @ packages/ui', color: true),
+        contains('[ripple] ▶ ui @ packages/ui'),
       );
-      expect(formatPackageScopeStart('packages/ui', color: true),
-          startsWith('\x1B['));
       expect(
-        formatPackageScopeEnd('packages/ui', exitCode: 0, color: true),
+        formatPackageScopeStart('ui @ packages/ui', color: true),
+        startsWith('\x1B['),
+      );
+      expect(
+        formatPackageScopeEnd('ui @ packages/ui', exitCode: 0, color: true),
         contains('(exit 0)'),
       );
       expect(
-        formatPackageScopeEnd('packages/ui', exitCode: 3, color: true),
+        formatPackageScopeEnd('ui @ packages/ui', exitCode: 3, color: true),
         contains('(exit 3)'),
       );
     });
@@ -161,8 +175,21 @@ void main() {
 
       expect(
         sink.toString(),
-        '[ripple] ▶ packages/ui\n'
-        '[ripple] ■ packages/ui  (exit 0)\n',
+        '[ripple] ▶ ui @ packages/ui\n'
+        '[ripple] ■ ui @ packages/ui  (exit 0)\n',
+      );
+    });
+
+    test('announceRootScopeStart / End write to the sink', () {
+      final sink = StringBuffer();
+
+      announceRootScopeStart(sink: sink, forceColor: false);
+      announceRootScopeEnd(exitCode: 0, sink: sink, forceColor: false);
+
+      expect(
+        sink.toString(),
+        '[ripple] ▶ (root)\n'
+        '[ripple] ■ (root)  (exit 0)\n',
       );
     });
 
@@ -186,8 +213,8 @@ void main() {
       expect(plain.toString(), isNot(contains('\x1B[')));
       expect(
         plain.toString(),
-        '[ripple] ▶ packages/ui\n'
-        '[ripple] ■ packages/ui  (exit 3)\n',
+        '[ripple] ▶ ui @ packages/ui\n'
+        '[ripple] ■ ui @ packages/ui  (exit 3)\n',
       );
 
       final colored = StringBuffer();
@@ -203,7 +230,7 @@ void main() {
         forceColor: true,
       );
       expect(colored.toString(), contains('\x1B['));
-      expect(colored.toString(), contains('[ripple] ▶ packages/ui'));
+      expect(colored.toString(), contains('[ripple] ▶ ui @ packages/ui'));
       expect(colored.toString(), contains('(exit 3)'));
     });
 
@@ -252,7 +279,7 @@ void main() {
 
       expect(
         sink.toString(),
-        '\n[ripple] ▶ packages/ui\n',
+        '\n[ripple] ▶ ui @ packages/ui\n',
       );
       expect(terminalLineState.atLineStart, isTrue);
     });
@@ -277,32 +304,59 @@ void main() {
     test('formatCommandStart / End use plain text without color', () {
       const command = ['dart', 'analyze', '.'];
       expect(
-        formatCommandStart(command, color: false),
-        '[ripple] \$ dart analyze .',
+        formatCommandStart(command, scopeLabel: 'ui', color: false),
+        '[ripple][ui] \$ dart analyze .',
       );
       expect(
-        formatCommandEnd(command, exitCode: 0, color: false),
-        '[ripple] \$ dart analyze .  (exit 0)',
+        formatCommandEnd(
+          command,
+          scopeLabel: 'ui',
+          exitCode: 0,
+          color: false,
+        ),
+        '[ripple][ui] \$ dart analyze .  (exit 0)',
       );
       expect(
-        formatCommandEnd(command, exitCode: 3, color: false),
-        '[ripple] \$ dart analyze .  (exit 3)',
+        formatCommandEnd(
+          command,
+          scopeLabel: 'ui',
+          exitCode: 3,
+          color: false,
+        ),
+        '[ripple][ui] \$ dart analyze .  (exit 3)',
+      );
+      expect(
+        formatCommandStart(command, scopeLabel: rootScopeLabel, color: false),
+        '[ripple][(root)] \$ dart analyze .',
       );
     });
 
     test('formatCommandStart / End wrap ANSI when color is on', () {
       const command = ['dart', 'test'];
       expect(
-        formatCommandStart(command, color: true),
-        contains('[ripple] \$ dart test'),
+        formatCommandStart(command, scopeLabel: 'ui', color: true),
+        contains('[ripple][ui] \$ dart test'),
       );
-      expect(formatCommandStart(command, color: true), startsWith('\x1B['));
       expect(
-        formatCommandEnd(command, exitCode: 0, color: true),
+        formatCommandStart(command, scopeLabel: 'ui', color: true),
+        startsWith('\x1B['),
+      );
+      expect(
+        formatCommandEnd(
+          command,
+          scopeLabel: 'ui',
+          exitCode: 0,
+          color: true,
+        ),
         contains('(exit 0)'),
       );
       expect(
-        formatCommandEnd(command, exitCode: 2, color: true),
+        formatCommandEnd(
+          command,
+          scopeLabel: 'ui',
+          exitCode: 2,
+          color: true,
+        ),
         contains('(exit 2)'),
       );
     });
@@ -311,9 +365,15 @@ void main() {
       final sink = StringBuffer();
       const command = ['printenv', 'RIPPLE_PACKAGE_NAME'];
 
-      announceCommandStart(command, sink: sink, forceColor: false);
+      announceCommandStart(
+        command,
+        scopeLabel: 'ui',
+        sink: sink,
+        forceColor: false,
+      );
       announceCommandEnd(
         command,
+        scopeLabel: 'ui',
         exitCode: 0,
         sink: sink,
         forceColor: false,
@@ -321,8 +381,8 @@ void main() {
 
       expect(
         sink.toString(),
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME\n'
-        '[ripple] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)\n',
+        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME\n'
+        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)\n',
       );
     });
 
@@ -333,12 +393,13 @@ void main() {
 
       announceCommandStart(
         const ['pwd'],
+        scopeLabel: rootScopeLabel,
         sink: sink,
         forceColor: false,
         forceEnsureLineStart: true,
       );
 
-      expect(sink.toString(), '\n[ripple] \$ pwd\n');
+      expect(sink.toString(), '\n[ripple][(root)] \$ pwd\n');
       expect(terminalLineState.atLineStart, isTrue);
     });
   });

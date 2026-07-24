@@ -178,9 +178,12 @@ Prioritize coverage for:
 - Rejection of unquoted `&&` in string commands
 - Fail-fast on ad-hoc `exec` and `exec:` scripts
 - Package-scope begin/end stderr banners for `exec` / `exec:` (once per
-  package, with exit code on end; not for `run:` scripts; color only on TTY)
+  package as `name @ path`, with exit code on end; color only on TTY)
+- Root-scope begin/end stderr banners for `run:` scripts (`(root)`, with exit
+  code on end; color only on TTY)
 - Per-command start/end stderr banners for `exec`, `exec:`, and `run:` (resolved
-  argv after `$RIPPLE_*` substitution; exit code on end; color only on TTY)
+  argv after `$RIPPLE_*` substitution; stamped with package name or `(root)`;
+  exit code on end; color only on TTY)
 - Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
 
 ---
