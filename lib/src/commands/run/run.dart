@@ -66,6 +66,12 @@ class RunCommand extends RippleCommand {
             'seed filters. May be passed multiple times. Valid only for '
             'exec: scripts.',
         valueHelp: 'name',
+      )
+      ..addOption(
+        overrideOptionName,
+        help: 'Overlay descriptor: none, default, or file:<path>. '
+            'Overrides $rippleOverrideEnvVar when both are set.',
+        valueHelp: 'descriptor',
       );
   }
 
@@ -123,7 +129,13 @@ class RunCommand extends RippleCommand {
     }
 
     final scriptName = rest.first;
-    final config = loadRippleConfig();
+    final config = loadRippleConfig(
+      overlay: resolveOverlayDescriptor(
+        cli: argResults!.wasParsed(overrideOptionName)
+            ? argResults!.option(overrideOptionName)
+            : null,
+      ),
+    );
     final script = resolveScript(config, scriptName);
 
     final group = argResults!.option(groupOptionName);

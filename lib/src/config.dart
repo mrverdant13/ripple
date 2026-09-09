@@ -398,6 +398,9 @@ const rippleOverridesFileName = 'ripple_overrides.yaml';
 /// Environment variable with the same grammar as `--override`.
 const rippleOverrideEnvVar = 'RIPPLE_OVERRIDE';
 
+/// CLI option name for `--override`.
+const overrideOptionName = 'override';
+
 /// How to pick at most one overlay file.
 sealed class OverlayDescriptor {
   /// Creates an overlay descriptor.
@@ -470,6 +473,14 @@ OverlayDescriptor? overlayDescriptorFromSources({
   return null;
 }
 
+/// Reads [rippleOverrideEnvVar] and optional CLI [cli] into a descriptor.
+OverlayDescriptor? resolveOverlayDescriptor({String? cli}) {
+  return overlayDescriptorFromSources(
+    cli: cli,
+    env: Platform.environment[rippleOverrideEnvVar],
+  );
+}
+
 /// Overlay document that may contain only `replacements` and/or
 /// `replacementOverrides`.
 class RippleOverlay {
@@ -509,9 +520,43 @@ RippleConfig applyRippleOverlay(RippleConfig base, RippleOverlay overlay) {
 /// Missing file is not an error. A present file is parsed as an overlay and
 /// merged via [applyRippleOverlay].
 RippleConfig mergeDefaultRippleOverlay(RippleConfig config) {
-  final overlayPath = p.join(config.rootPath, rippleOverridesFileName);
+  return _mergeOverlayFile(
+    config,
+    p.join(config.rootPath, rippleOverridesFileName),
+    required: false,
+  );
+}
+
+/// Applies [descriptor], defaulting to [OverlayDefault] when [descriptor] is
+/// null.
+RippleConfig applyOverlayDescriptor(
+  RippleConfig config,
+  OverlayDescriptor? descriptor,
+) {
+  final resolved = descriptor ?? const OverlayDefault();
+  return switch (resolved) {
+    OverlayNone() => config,
+    OverlayDefault() => mergeDefaultRippleOverlay(config),
+    OverlayFile(:final path) => _mergeOverlayFile(
+        config,
+        p.isAbsolute(path) ? path : p.join(config.rootPath, path),
+        required: true,
+      ),
+  };
+}
+
+RippleConfig _mergeOverlayFile(
+  RippleConfig config,
+  String overlayPath, {
+  required bool required,
+}) {
   final file = File(overlayPath);
   if (!file.existsSync()) {
+    if (required) {
+      throw RippleConfigException(
+        'Overlay file not found: $overlayPath',
+      );
+    }
     return config;
   }
   late final String contents;
@@ -556,7 +601,11 @@ String findRippleYamlPath({Directory? start}) {
 /// Loads, parses, and validates the nearest ancestor `ripple.yaml`.
 ///
 /// The returned [RippleConfig.rootPath] is the directory containing that file.
-RippleConfig loadRippleConfig({Directory? start}) {
+/// [overlay] selects which overlay file to merge; `null` uses [OverlayDefault].
+RippleConfig loadRippleConfig({
+  Directory? start,
+  OverlayDescriptor? overlay,
+}) {
   final yamlPath = findRippleYamlPath(start: start);
   final file = File(yamlPath);
   late final String contents;
@@ -567,12 +616,13 @@ RippleConfig loadRippleConfig({Directory? start}) {
       'Failed to read $yamlPath: ${error.message}',
     );
   }
-  return mergeDefaultRippleOverlay(
+  return applyOverlayDescriptor(
     parseRippleYaml(
       contents,
       rootPath: p.dirname(yamlPath),
       sourceUrl: p.toUri(yamlPath),
     ),
+    overlay,
   );
 }
 
