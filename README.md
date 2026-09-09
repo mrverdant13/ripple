@@ -243,9 +243,34 @@ The overlay file may contain **only** `replacements` and/or
 absent, behavior is unchanged.
 
 Use this for machine-local pins (FVM on a laptop) that should not be
-committed. Add it to the consumer repo's `.gitignore`. CI should keep using
-`ripple.yaml` only — do not commit `ripple_overrides.yaml`. There is currently
-no flag to skip a present default overlay (rename or delete the file).
+committed. Add it to the consumer repo's `.gitignore`. Do not commit
+`ripple_overrides.yaml`.
+
+Select the overlay with `--override` or `RIPPLE_OVERRIDE` (same grammar;
+`--override` wins when both are set). Unprefixed paths are errors. An empty
+env value is unset.
+
+| Descriptor | Behavior |
+| --- | --- |
+| *(unset)* | Same as `default`: load `ripple_overrides.yaml` if it exists. |
+| `none` | Load no overlay (`{{dart}}` still comes from `ripple.yaml`). |
+| `default` | Load `ripple_overrides.yaml` if it exists. Absence is not an error. |
+| `file:<path>` | That file, relative to the Ripple root (absolute paths allowed). **Missing file is an error.** |
+
+PATH Dart in CI is an explicit overlay file, not `none`:
+
+```bash
+RIPPLE_OVERRIDE=file:ripple.ci.yaml ripple run analyze
+ripple exec --override=none -- {{dart}} analyze .
+ripple exec --override=default -- {{dart}} analyze .
+```
+
+```yaml
+# ripple.ci.yaml (committed)
+replacements:
+  dart: dart
+  flutter: flutter
+```
 
 ```yaml
 # ripple_overrides.yaml (gitignored)
@@ -474,6 +499,7 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 | Flag | Description |
 | --- | --- |
 | `--fail-fast` | Stop after the first package whose command exits non-zero. |
+| `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Without `--fail-fast`, every selected package still runs; the overall exit code
 is the first non-zero package exit (or `0` when all succeed).
@@ -515,6 +541,7 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 | Flag | Description |
 | --- | --- |
 | `--fail-fast` | For `exec:` scripts, stop after the first package whose command exits non-zero. |
+| `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Unknown script names fail with a clear error that lists available scripts.
 
@@ -533,6 +560,9 @@ Child processes receive these variables in the environment (and as `$VAR` /
 itself; it is not injected into child processes beyond normal
 parent-environment inheritance. For `exec:` scripts it narrows **seeds only**
 — dependents/dependencies expansion still runs from those seeds.
+
+`RIPPLE_OVERRIDE` accepts the same descriptors as `--override` (`none`,
+`default`, `file:<path>`). `--override` wins when both are set.
 
 ## Non-goals
 

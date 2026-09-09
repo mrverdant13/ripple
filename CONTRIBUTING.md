@@ -194,6 +194,9 @@ Prioritize coverage for:
   per package; `run:` uses the global map only; unspecified keys fall through)
 - Auto-load of `ripple_overrides.yaml` next to `ripple.yaml` (present / absent /
   invalid; replacements replace keys; override entries prepend)
+- Overlay descriptors (`none`, `default`, `file:<path>`) on `--override` and
+  `RIPPLE_OVERRIDE` (CLI wins; bare paths rejected; missing `file:` errors;
+  missing default file is OK)
 
 ---
 
