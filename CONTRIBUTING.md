@@ -192,6 +192,8 @@ Prioritize coverage for:
   no rescan of spliced tokens, bare `dart` unchanged)
 - `replacementOverrides` parse and first-matching apply (`exec` / `exec:`
   per package; `run:` uses the global map only; unspecified keys fall through)
+- Auto-load of `ripple_overrides.yaml` next to `ripple.yaml` (present / absent /
+  invalid; replacements replace keys; override entries prepend)
 
 ---
 
