@@ -47,6 +47,7 @@ ripple/                         # repo root = package root
 │       ├── filters.dart
 │       ├── graph.dart          # Workspace dep graph + transitive closures
 │       ├── exec.dart           # Process runner helper (cwd/env/exit code)
+│       ├── replacements.dart   # {{key}} expansion from replacements map
 │       ├── scripts.dart
 │       └── commands/
 │           ├── commands.dart               # Commands barrel
@@ -182,9 +183,13 @@ Prioritize coverage for:
 - Root-scope begin/end stderr banners for `run:` scripts (`(root)`, with exit
   code on end; color only on TTY)
 - Per-command start/end stderr banners for `exec`, `exec:`, and `run:` (resolved
-  argv after `$RIPPLE_*` substitution; stamped with package name or `(root)`;
-  exit code on end; color only on TTY)
+  argv after `$RIPPLE_*` substitution and `{{key}}` replacement expansion;
+  stamped with package name or `(root)`; exit code on end; color only on TTY)
 - Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
+  in command arguments and in `replacements` values
+- `replacements` map parse (empty key, blank value, unquoted `&&`, `RIPPLE_*`
+  keys) and `{{key}}` expansion (`fvm dart` splice, unknown / empty `{{}}`,
+  no rescan of spliced tokens, bare `dart` unchanged)
 
 ---
 

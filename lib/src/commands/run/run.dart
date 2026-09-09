@@ -5,6 +5,7 @@ import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
+import 'package:ripple_cli/src/replacements.dart';
 import 'package:ripple_cli/src/scripts.dart';
 
 /// {@template ripple_cli.run_command}
@@ -158,7 +159,11 @@ class RunCommand extends RippleCommand {
       announceRootScopeStart();
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
-        final resolvedCommand = substituteRippleVars(command, vars: vars);
+        final resolvedCommand = resolveCommandReplacements(
+          command,
+          replacements: config.replacements,
+          vars: vars,
+        );
         announceCommandStart(resolvedCommand, scopeLabel: rootScopeLabel);
         final result = await _runCommand(
           resolvedCommand,
@@ -204,7 +209,11 @@ class RunCommand extends RippleCommand {
       var packageExitCode = 0;
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
-        final resolvedCommand = substituteRippleVars(command, vars: vars);
+        final resolvedCommand = resolveCommandReplacements(
+          command,
+          replacements: config.replacements,
+          vars: vars,
+        );
         announceCommandStart(resolvedCommand, scopeLabel: package.name);
         final result = await _runCommand(
           resolvedCommand,

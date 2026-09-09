@@ -90,6 +90,22 @@ ripple --version
 Ripple walks upward from the current working directory until it finds
 `ripple.yaml`; that file's directory is the Ripple root.
 
+To run a workspace Dart/Flutter wrapper (FVM, Puro, a pinned SDK path) without
+hard-coding it in every script, declare a `replacements` map and wrap **only
+the key**:
+
+```yaml
+replacements:
+  dart: fvm dart
+
+scripts:
+  analyze:
+    exec: "{{dart}} analyze --fatal-infos --fatal-warnings ."
+```
+
+YAML must quote a command string that starts with `{{`. Ad-hoc
+`ripple exec -- {{dart}} analyze .` can stay unquoted in bash.
+
 ## `ripple.yaml`
 
 ### Top-level keys
@@ -97,6 +113,7 @@ Ripple walks upward from the current working directory until it finds
 | Key | Required | Description |
 | --- | --- | --- |
 | `name` | no | Optional display name for the workspace. |
+| `replacements` | no | Named command aliases expanded from `{{key}}` placeholders. |
 | `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`). |
 | `scripts` | no | Named scripts keyed by id (ids may contain dots, e.g. `format.ci`). |
 
@@ -129,6 +146,45 @@ packages:
 - **`filtersPresets`** — named filter expression fragments reusable via
   `preset:` nodes (in any filter AST) or CLI `--preset`. Each value is a
   list-form filter expression (same shape as script `filters`).
+
+### `replacements`
+
+A string-to-string map of placeholder keys to command strings. Values are
+parsed like `run:` / `exec:` steps (may be multiple tokens). Wrap **only the
+key**; flags stay outside the braces.
+
+```yaml
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+  coverde: dart run coverde
+
+scripts:
+  analyze:
+    exec: "{{dart}} analyze --fatal-infos --fatal-warnings ."
+  test:
+    exec: "{{flutter}} test"
+    filters:
+      - dependsOn: [flutter]
+  coverage.check:
+    run: "{{coverde}} check --input $RIPPLE_ROOT_PATH/coverage/lcov.merged.info 100"
+```
+
+- `{{dart}}` with `dart: fvm dart` splices to `fvm`, `dart`. The rest of the
+  command is unchanged. Bare `dart` / `flutter` outside placeholders are **not**
+  rewritten.
+- Unknown keys and empty `{{}}` fail with a config error. Nested `{{` inside a
+  placeholder is rejected. Spliced tokens are **not** re-scanned, so a value
+  `dart run coverde` will not then expand `dart` — write `fvm dart run coverde`
+  if you need the wrapper there.
+- `$RIPPLE_*` / `${RIPPLE_*}` still substitute in command arguments **and** in
+  replacement values (`dart: $RIPPLE_PACKAGE_PATH/.fvm/flutter_sdk/bin/dart`).
+- Keys must be non-empty, must not start with `RIPPLE_`, and values must be
+  non-empty command strings (unquoted `&&` is rejected, same as script steps).
+- Command banners print the **post-expansion** argv.
+
+Configs without `replacements` are unchanged. Placeholders in commands then
+fail as unknown keys.
 
 ### `scripts`
 
@@ -258,9 +314,10 @@ Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
 command lists, unquoted `&&` in a string command, invalid filter nodes, or
 malformed YAML) fail with a clear config error.
 
-There is no cross-script composition (for example referencing other script ids
-inside a list). Compose named scripts from the shell when needed
-(`ripple run format.ci && ripple run analyze.ci`).
+There is no cross-script composition (for example sip-style `${{ }}`
+references to other script ids). `{{key}}` placeholders expand `replacements`
+only — they are not script references. Compose named scripts from the shell
+when needed (`ripple run format.ci && ripple run analyze.ci`).
 
 ## Commands
 
@@ -305,8 +362,8 @@ to each package directory. Pass the executable and its arguments after `--`.
 Each package is wrapped in begin/end stderr banners using that package's
 pubspec name and relative path (`name @ path`). Inside that block, Ripple also
 prints start/end banners for the resolved command (after `$RIPPLE_*`
-substitution), stamped with the package name so each argv is visible next to
-its output:
+substitution and `{{key}}` replacement expansion), stamped with the package
+name so each argv is visible next to its output:
 
 ```text
 [ripple] ▶ core @ packages/core
@@ -324,6 +381,7 @@ inserts a newline before the next banner so markers stay on their own line.
 
 ```bash
 ripple exec -- dart analyze .
+ripple exec -- {{dart}} analyze .
 ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ```
@@ -380,7 +438,7 @@ Unknown script names fail with a clear error that lists available scripts.
 ## Environment variables
 
 Child processes receive these variables in the environment (and as `$VAR` /
-`${VAR}` substitutions in command arguments):
+`${VAR}` substitutions in command arguments and in `replacements` values):
 
 | Variable | Value |
 | --- | --- |
@@ -399,8 +457,9 @@ Ripple intentionally does **not**:
 
 - Create or manage Dart **workspaces**
 - Generate **`pubspec_overrides.yaml`** or otherwise link packages
-- Provide cross-script composition or sip-style `${{ }}` references (use a YAML
-  list for in-script steps, or shell `&&` between `ripple run` invocations)
+- Provide cross-script composition or sip-style `${{ }}` **script** references
+  (use a YAML list for in-script steps, or shell `&&` between `ripple run`
+  invocations). `{{key}}` placeholders are only for the `replacements` map.
 - Discover packages by anything other than `pubspec.yaml` presence under
   include/exclude globs
 - Publish to pub.dev as the v1 distribution channel (use git tags with

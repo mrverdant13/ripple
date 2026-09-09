@@ -5,6 +5,7 @@ import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
+import 'package:ripple_cli/src/replacements.dart';
 
 /// {@template ripple_cli.exec_command}
 /// `ripple exec` — run an ad-hoc command once per matching package.
@@ -137,7 +138,11 @@ class ExecCommand extends RippleCommand {
         rootPath: config.rootPath,
         package: package,
       );
-      final resolvedCommand = substituteRippleVars(command, vars: vars);
+      final resolvedCommand = resolveCommandReplacements(
+        command,
+        replacements: config.replacements,
+        vars: vars,
+      );
       announceCommandStart(resolvedCommand, scopeLabel: package.name);
       final result = await _runPackageCommand(
         resolvedCommand,
