@@ -161,7 +161,7 @@ class RunCommand extends RippleCommand {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = resolveCommandReplacements(
           command,
-          replacements: config.replacements,
+          replacements: resolveReplacements(config: config),
           vars: vars,
         );
         announceCommandStart(resolvedCommand, scopeLabel: rootScopeLabel);
@@ -189,8 +189,9 @@ class RunCommand extends RippleCommand {
     final scriptCriteria =
         PackageFilterCriteria.fromScriptFilters(script.filters);
     final criteria = scriptCriteria.intersect(cliCriteria);
+    final discovered = discoverPackages(config);
     final packages = selectPackages(
-      discoverPackages(config),
+      discovered,
       config: config,
       criteria: criteria,
       dependentsFilters: script.dependentsFilters,
@@ -211,7 +212,11 @@ class RunCommand extends RippleCommand {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = resolveCommandReplacements(
           command,
-          replacements: config.replacements,
+          replacements: resolveReplacements(
+            config: config,
+            package: package,
+            workspacePackages: discovered,
+          ),
           vars: vars,
         );
         announceCommandStart(resolvedCommand, scopeLabel: package.name);

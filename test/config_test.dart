@@ -77,6 +77,7 @@ scripts:
       expect(config.packages.filtersPresets, isEmpty);
       expect(config.scripts, isEmpty);
       expect(config.replacements, isEmpty);
+      expect(config.replacementOverrides, isEmpty);
     });
 
     test('parses replacements map', () {
@@ -287,6 +288,262 @@ replacements:
             (e) => e.message,
             'message',
             contains('duplicated'),
+          ),
+        ),
+      );
+    });
+
+    test('parses replacementOverrides', () {
+      const yaml = '''
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+replacementOverrides:
+  - filters:
+      - group: puro
+    replacements:
+      dart: puro dart
+      flutter: puro flutter
+  - filters:
+      - match: ['legacy_*']
+    replacements:
+      dart: /opt/dart-3.3/bin/dart
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(config.replacementOverrides, [
+        const ReplacementOverride(
+          filters: FilterAnd([
+            FilterGroup('puro'),
+          ]),
+          replacements: {
+            'dart': 'puro dart',
+            'flutter': 'puro flutter',
+          },
+        ),
+        const ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['legacy_*']),
+          ]),
+          replacements: {
+            'dart': '/opt/dart-3.3/bin/dart',
+          },
+        ),
+      ]);
+    });
+
+    test('ReplacementOverride equality distinguishes filters and maps', () {
+      const override = ReplacementOverride(
+        filters: FilterMatch(['legacy_*']),
+        replacements: {'dart': 'puro dart'},
+      );
+      expect(override, override);
+      expect(
+        override,
+        const ReplacementOverride(
+          filters: FilterMatch(['legacy_*']),
+          replacements: {'dart': 'puro dart'},
+        ),
+      );
+      expect(
+        override.hashCode,
+        const ReplacementOverride(
+          filters: FilterMatch(['legacy_*']),
+          replacements: {'dart': 'puro dart'},
+        ).hashCode,
+      );
+      expect(
+        override,
+        isNot(
+          const ReplacementOverride(
+            filters: FilterMatch(['other']),
+            replacements: {'dart': 'puro dart'},
+          ),
+        ),
+      );
+      expect(
+        override,
+        isNot(
+          const ReplacementOverride(
+            filters: FilterMatch(['legacy_*']),
+            replacements: {'dart': 'fvm dart'},
+          ),
+        ),
+      );
+      expect(
+        override,
+        isNot(
+          const ReplacementOverride(
+            filters: FilterMatch(['legacy_*']),
+            replacements: {'dart': 'puro dart', 'flutter': 'x'},
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-list replacementOverrides', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  filters:
+    - match: [core]
+  replacements:
+    dart: puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('replacementOverrides'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-map replacementOverrides entries', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - just-a-string
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+                contains('replacementOverrides[0]'), contains('must be a map')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects replacementOverrides entries without filters', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - replacements:
+      dart: puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must declare `filters`'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects replacementOverrides entries without replacements', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - filters:
+      - match: [core]
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must declare `replacements`'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects empty replacementOverrides filters', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - filters: []
+    replacements:
+      dart: puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('non-empty'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects null replacementOverrides filters', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - filters:
+    replacements:
+      dart: puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('filters'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects map-form replacementOverrides filters', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - filters:
+      match: [core]
+    replacements:
+      dart: puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('map-form'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects invalid replacements inside an override', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacementOverrides:
+  - filters:
+      - match: [core]
+    replacements:
+      RIPPLE_ROOT_PATH: /tmp
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('reserved'),
           ),
         ),
       );

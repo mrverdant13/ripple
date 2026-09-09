@@ -306,6 +306,53 @@ class RipplePackages {
   final Map<String, FilterExpr> filtersPresets;
 }
 
+/// A filter-scoped overlay of [RippleConfig.replacements].
+///
+/// The first matching override wins. Unmentioned keys fall through to the
+/// global map (shallow merge).
+class ReplacementOverride {
+  /// Creates a filter-scoped replacements overlay.
+  const ReplacementOverride({
+    required this.filters,
+    required this.replacements,
+  });
+
+  /// Package filter expression (list-form AST, same as script `filters`).
+  final FilterExpr filters;
+
+  /// Replacement keys to overlay when [filters] matches.
+  final Map<String, String> replacements;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReplacementOverride &&
+      other.filters == filters &&
+      _mapEquals(other.replacements, replacements);
+
+  @override
+  int get hashCode => Object.hash(
+        filters,
+        Object.hashAll(
+          replacements.entries.map((e) => Object.hash(e.key, e.value)),
+        ),
+      );
+}
+
+bool _mapEquals(Map<String, String> a, Map<String, String> b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a.length != b.length) {
+    return false;
+  }
+  for (final entry in a.entries) {
+    if (b[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// Typed model for a loaded `ripple.yaml`.
 class RippleConfig {
   /// Creates a config bound to the directory that contained `ripple.yaml`.
@@ -315,6 +362,7 @@ class RippleConfig {
     this.packages = const RipplePackages(),
     this.scripts = const {},
     this.replacements = const {},
+    this.replacementOverrides = const [],
   });
 
   /// Absolute path of the directory containing `ripple.yaml`.
@@ -334,6 +382,11 @@ class RippleConfig {
   /// Values are command strings, parsed like `run:` / `exec:` steps (may be
   /// multiple tokens). Keys must not be empty or start with `RIPPLE_`.
   final Map<String, String> replacements;
+
+  /// Filter-scoped overlays applied to [replacements] for `exec` / `exec:`.
+  ///
+  /// First matching entry wins. `run:` scripts ignore this list.
+  final List<ReplacementOverride> replacementOverrides;
 }
 
 /// File name sought when discovering the Ripple config root.
@@ -424,12 +477,95 @@ RippleConfig _configFromMap(
   final packages = _packagesFromValue(map['packages'], map);
   final scripts = _scriptsFromValue(map['scripts'], map);
   final replacements = _replacementsFromValue(map['replacements'], map);
+  final replacementOverrides =
+      _replacementOverridesFromValue(map['replacementOverrides'], map);
   return RippleConfig(
     rootPath: rootPath,
     name: name,
     packages: packages,
     scripts: scripts,
     replacements: replacements,
+    replacementOverrides: replacementOverrides,
+  );
+}
+
+List<ReplacementOverride> _replacementOverridesFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const [];
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'replacementOverrides',
+      'RippleConfig',
+      'Expected a list of filter-scoped replacement overlays',
+    );
+  }
+  return List<ReplacementOverride>.unmodifiable([
+    for (var i = 0; i < value.length; i++)
+      _replacementOverrideFromValue(
+        value[i],
+        parent,
+        index: i,
+      ),
+  ]);
+}
+
+ReplacementOverride _replacementOverrideFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent, {
+  required int index,
+}) {
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'replacementOverrides',
+      'RippleConfig',
+      'replacementOverrides[$index] must be a map with `filters` and '
+          '`replacements`',
+    );
+  }
+  final Map<dynamic, dynamic> map = value;
+  if (!map.containsKey('filters')) {
+    throw CheckedFromJsonException(
+      map,
+      'filters',
+      'ReplacementOverride',
+      'replacementOverrides[$index] must declare `filters`',
+    );
+  }
+  if (!map.containsKey('replacements')) {
+    throw CheckedFromJsonException(
+      map,
+      'replacements',
+      'ReplacementOverride',
+      'replacementOverrides[$index] must declare `replacements`',
+    );
+  }
+  final filters = _filtersFromValue(
+    map['filters'],
+    map,
+    keyName: 'filters',
+    className: 'ReplacementOverride',
+    emptyListMessage:
+        'replacementOverrides[$index] `filters` must be a non-empty list of '
+        'filter expressions',
+  );
+  if (filters == null) {
+    throw CheckedFromJsonException(
+      map,
+      'filters',
+      'ReplacementOverride',
+      'replacementOverrides[$index] `filters` must be a non-empty list of '
+          'filter expressions',
+    );
+  }
+  return ReplacementOverride(
+    filters: filters,
+    replacements: _replacementsFromValue(map['replacements'], map),
   );
 }
 

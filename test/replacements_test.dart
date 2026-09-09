@@ -1,4 +1,5 @@
 import 'package:ripple_cli/src/config.dart';
+import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/replacements.dart';
 import 'package:test/test.dart';
@@ -247,6 +248,131 @@ void main() {
           replacements: const {'dart': "fvm 'dart"},
         ),
         throwsA(isA<RippleConfigException>()),
+      );
+    });
+  });
+
+  group('resolveReplacements', () {
+    const core = RipplePackage(
+      name: 'core',
+      path: '/repo/packages/core',
+      relativePath: 'packages/core',
+    );
+    const legacy = RipplePackage(
+      name: 'legacy',
+      path: '/repo/packages/legacy',
+      relativePath: 'packages/legacy',
+    );
+
+    const config = RippleConfig(
+      rootPath: '/repo',
+      replacements: {
+        'dart': 'fvm dart',
+        'flutter': 'fvm flutter',
+      },
+      replacementOverrides: [
+        ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['legacy']),
+          ]),
+          replacements: {'dart': 'puro dart'},
+        ),
+        ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['legacy']),
+          ]),
+          replacements: {'dart': 'SHOULD_NOT_WIN'},
+        ),
+      ],
+    );
+
+    test('returns defaults when package is omitted (run:)', () {
+      expect(
+        resolveReplacements(config: config),
+        {
+          'dart': 'fvm dart',
+          'flutter': 'fvm flutter',
+        },
+      );
+    });
+
+    test('returns defaults when no override matches', () {
+      expect(
+        resolveReplacements(config: config, package: core),
+        {
+          'dart': 'fvm dart',
+          'flutter': 'fvm flutter',
+        },
+      );
+    });
+
+    test('first matching override wins and shallow-merges', () {
+      expect(
+        resolveReplacements(config: config, package: legacy),
+        {
+          'dart': 'puro dart',
+          'flutter': 'fvm flutter',
+        },
+      );
+    });
+
+    test('returns defaults when there are no overrides', () {
+      const bare = RippleConfig(
+        rootPath: '/repo',
+        replacements: {'dart': 'dart'},
+      );
+      expect(
+        resolveReplacements(config: bare, package: core),
+        {'dart': 'dart'},
+      );
+    });
+
+    test('uses provided group membership for group filters', () {
+      const grouped = RippleConfig(
+        rootPath: '/repo',
+        replacements: {'dart': 'fvm dart'},
+        packages: RipplePackages(
+          groups: {
+            'puro': ['packages/core'],
+          },
+        ),
+        replacementOverrides: [
+          ReplacementOverride(
+            filters: FilterAnd([
+              FilterGroup('puro'),
+            ]),
+            replacements: {'dart': 'puro dart'},
+          ),
+        ],
+      );
+
+      expect(
+        resolveReplacements(
+          config: grouped,
+          package: core,
+          workspacePackages: const [core, legacy],
+        ),
+        {'dart': 'puro dart'},
+      );
+      expect(
+        resolveReplacements(
+          config: grouped,
+          package: core,
+          groupMembership: const {
+            'puro': [core],
+          },
+        ),
+        {'dart': 'puro dart'},
+      );
+      expect(
+        resolveReplacements(
+          config: grouped,
+          package: legacy,
+          groupMembership: const {
+            'puro': [core],
+          },
+        ),
+        {'dart': 'fvm dart'},
       );
     });
   });

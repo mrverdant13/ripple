@@ -190,6 +190,8 @@ Prioritize coverage for:
 - `replacements` map parse (empty key, blank value, unquoted `&&`, `RIPPLE_*`
   keys) and `{{key}}` expansion (`fvm dart` splice, unknown / empty `{{}}`,
   no rescan of spliced tokens, bare `dart` unchanged)
+- `replacementOverrides` parse and first-matching apply (`exec` / `exec:`
+  per package; `run:` uses the global map only; unspecified keys fall through)
 
 ---
 

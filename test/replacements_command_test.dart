@@ -193,5 +193,85 @@ scripts:
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['core extra']);
     });
+
+    test('exec applies the first matching replacementOverrides entry',
+        () async {
+      Directory(p.join(workspace.path, 'packages', 'legacy'))
+          .createSync(recursive: true);
+      File(p.join(workspace.path, 'packages', 'legacy', 'pubspec.yaml'))
+          .writeAsStringSync('name: legacy\n');
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: echo DEFAULT
+replacementOverrides:
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: echo OVERRIDE
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: echo SECOND
+packages:
+  include:
+    - packages/*
+''');
+
+      final result = await runRipple(['exec', '--', '{{dart}}', 'ok']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['DEFAULT ok', 'OVERRIDE ok']);
+    });
+
+    test('exec: script applies per-package overrides', () async {
+      Directory(p.join(workspace.path, 'packages', 'legacy'))
+          .createSync(recursive: true);
+      File(p.join(workspace.path, 'packages', 'legacy', 'pubspec.yaml'))
+          .writeAsStringSync('name: legacy\n');
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: echo DEFAULT
+replacementOverrides:
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: echo OVERRIDE
+packages:
+  include:
+    - packages/*
+scripts:
+  greet:
+    exec: "{{dart}} ok"
+''');
+
+      final result = await runRipple(['run', 'greet']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['DEFAULT ok', 'OVERRIDE ok']);
+    });
+
+    test('run: script ignores replacementOverrides', () async {
+      Directory(p.join(workspace.path, 'packages', 'legacy'))
+          .createSync(recursive: true);
+      File(p.join(workspace.path, 'packages', 'legacy', 'pubspec.yaml'))
+          .writeAsStringSync('name: legacy\n');
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: echo DEFAULT
+replacementOverrides:
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: echo OVERRIDE
+scripts:
+  format:
+    run: "{{dart}} ok"
+''');
+
+      final result = await runRipple(['run', 'format']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['DEFAULT ok']);
+    });
   });
 }
