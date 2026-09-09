@@ -1307,6 +1307,94 @@ replacementOverrides:
     });
   });
 
+  group('parseOverlayDescriptor', () {
+    test('parses none, default, and file paths', () {
+      expect(parseOverlayDescriptor('none'), isA<OverlayNone>());
+      expect(parseOverlayDescriptor(' default '), isA<OverlayDefault>());
+      expect(
+        (parseOverlayDescriptor('file:ripple.ci.yaml') as OverlayFile).path,
+        'ripple.ci.yaml',
+      );
+      expect(
+        (parseOverlayDescriptor(r'file:C:\foo.yaml') as OverlayFile).path,
+        r'C:\foo.yaml',
+      );
+    });
+
+    test('rejects a bare path', () {
+      expect(
+        () => parseOverlayDescriptor('ripple.ci.yaml'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('ripple.ci.yaml'), contains('file:<path>')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an empty file: descriptor', () {
+      expect(
+        () => parseOverlayDescriptor('file:'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include a path'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a whitespace-only file: path', () {
+      expect(
+        () => parseOverlayDescriptor('file:   '),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include a path'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an unknown prefix', () {
+      expect(
+        () => parseOverlayDescriptor('dir:overlays'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Invalid overlay descriptor'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an empty descriptor', () {
+      expect(
+        () => parseOverlayDescriptor(''),
+        throwsA(isA<RippleConfigException>()),
+      );
+    });
+
+    test('overlayDescriptorFromSources prefers CLI over env', () {
+      expect(
+        overlayDescriptorFromSources(cli: 'none', env: 'file:ripple.ci.yaml'),
+        isA<OverlayNone>(),
+      );
+      expect(
+        overlayDescriptorFromSources(env: 'default'),
+        isA<OverlayDefault>(),
+      );
+      expect(overlayDescriptorFromSources(env: ''), isNull);
+      expect(overlayDescriptorFromSources(env: null), isNull);
+      expect(overlayDescriptorFromSources(), isNull);
+    });
+  });
+
   group('findRippleYamlPath / loadRippleConfig', () {
     late Directory tempRoot;
 

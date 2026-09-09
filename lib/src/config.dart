@@ -395,6 +395,81 @@ const rippleYamlFileName = 'ripple.yaml';
 /// Optional host overlay next to [rippleYamlFileName] (Ripple root only).
 const rippleOverridesFileName = 'ripple_overrides.yaml';
 
+/// Environment variable with the same grammar as `--override`.
+const rippleOverrideEnvVar = 'RIPPLE_OVERRIDE';
+
+/// How to pick at most one overlay file.
+sealed class OverlayDescriptor {
+  /// Creates an overlay descriptor.
+  const OverlayDescriptor();
+}
+
+/// Load no overlay (`{{key}}` still comes from `ripple.yaml`).
+final class OverlayNone extends OverlayDescriptor {
+  /// Creates a `none` descriptor.
+  const OverlayNone();
+}
+
+/// Load [rippleOverridesFileName] if it exists (absence is not an error).
+final class OverlayDefault extends OverlayDescriptor {
+  /// Creates a `default` descriptor.
+  const OverlayDefault();
+}
+
+/// Load exactly this overlay file (missing file is an error).
+final class OverlayFile extends OverlayDescriptor {
+  /// Creates a `file:<path>` descriptor. [path] is the remainder after `file:`.
+  const OverlayFile(this.path);
+
+  /// Path from the descriptor (`file:` prefix already stripped).
+  final String path;
+}
+
+/// Parses `none`, `default`, or `file:<path>`.
+///
+/// Unprefixed paths, unknown prefixes, and empty `file:` throw
+/// [RippleConfigException].
+OverlayDescriptor parseOverlayDescriptor(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed == 'none') {
+    return const OverlayNone();
+  }
+  if (trimmed == 'default') {
+    return const OverlayDefault();
+  }
+  if (trimmed.startsWith('file:')) {
+    final path = trimmed.substring('file:'.length);
+    if (path.trim().isEmpty) {
+      throw const RippleConfigException(
+        'Overlay descriptor `file:` must include a path',
+      );
+    }
+    return OverlayFile(path);
+  }
+  throw RippleConfigException(
+    'Invalid overlay descriptor "$raw". Expected `none`, `default`, or '
+    '`file:<path>`',
+  );
+}
+
+/// Resolves `--override` over [rippleOverrideEnvVar].
+///
+/// A missing CLI value falls through to a non-empty env value. An empty env
+/// string is treated as unset. Returns `null` when neither is set (callers
+/// then use the default auto-load).
+OverlayDescriptor? overlayDescriptorFromSources({
+  String? cli,
+  String? env,
+}) {
+  if (cli != null) {
+    return parseOverlayDescriptor(cli);
+  }
+  if (env != null && env.isNotEmpty) {
+    return parseOverlayDescriptor(env);
+  }
+  return null;
+}
+
 /// Overlay document that may contain only `replacements` and/or
 /// `replacementOverrides`.
 class RippleOverlay {
