@@ -114,6 +114,7 @@ YAML must quote a command string that starts with `{{`. Ad-hoc
 | --- | --- | --- |
 | `name` | no | Optional display name for the workspace. |
 | `replacements` | no | Named command aliases expanded from `{{key}}` placeholders. |
+| `replacementOverrides` | no | Filter-scoped overlays of `replacements` (first match wins). |
 | `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`). |
 | `scripts` | no | Named scripts keyed by id (ids may contain dots, e.g. `format.ci`). |
 
@@ -185,6 +186,62 @@ scripts:
 
 Configs without `replacements` are unchanged. Placeholders in commands then
 fail as unknown keys.
+
+### `replacementOverrides`
+
+A list of `{ filters, replacements }` entries. `filters` is the same list-form
+AST as script `filters`. For `ripple exec` and `exec:` scripts, Ripple walks
+the list in YAML order and applies the **first** matching overlay (shallow
+merge: unspecified keys fall through to the global `replacements` map).
+Overlapping filters are first-wins; later matches are ignored.
+
+`run:` scripts have no package, so they use the global `replacements` map
+only.
+
+```yaml
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+
+replacementOverrides:
+  - filters:
+      - group: puro
+    replacements:
+      dart: puro dart
+      flutter: puro flutter
+  - filters:
+      - match: [legacy_pos]
+    replacements:
+      dart: $RIPPLE_ROOT_PATH/tool/sdks/flutter-3.16/bin/dart
+      flutter: $RIPPLE_ROOT_PATH/tool/sdks/flutter-3.16/bin/flutter
+
+packages:
+  groups:
+    puro:
+      - apps/new_mobile
+      - packages/new_design_system
+```
+
+- Packages in `puro` spawn `puro dart` / `puro flutter` (Puro reads that
+  package's `.puro.json` from cwd).
+- `legacy_pos` uses absolute SDK binaries. Other packages keep `fvm dart`.
+- A root `run: "{{dart}} format ."` always uses `fvm dart`, even when an
+  override would match some package.
+
+Another pattern: PATH Dart for packages without Flutter, FVM for apps:
+
+```yaml
+replacements:
+  dart: dart
+  flutter: flutter
+
+replacementOverrides:
+  - filters:
+      - dependsOn: [flutter]
+    replacements:
+      dart: fvm dart
+      flutter: fvm flutter
+```
 
 ### `scripts`
 
