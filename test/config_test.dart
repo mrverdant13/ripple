@@ -76,6 +76,220 @@ scripts:
       expect(config.packages.groups, isEmpty);
       expect(config.packages.filtersPresets, isEmpty);
       expect(config.scripts, isEmpty);
+      expect(config.replacements, isEmpty);
+    });
+
+    test('parses replacements map', () {
+      const yaml = '''
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+  coverde: dart run coverde
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(config.replacements, {
+        'dart': 'fvm dart',
+        'flutter': 'fvm flutter',
+        'coverde': 'dart run coverde',
+      });
+    });
+
+    test('trims replacement keys', () {
+      const yaml = '''
+replacements:
+  " dart ": fvm dart
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(config.replacements, {'dart': 'fvm dart'});
+    });
+
+    test('allows quoted && in a replacement value', () {
+      const yaml = '''
+replacements:
+  check: sh -c 'dart format . && dart analyze .'
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(
+        config.replacements['check'],
+        "sh -c 'dart format . && dart analyze .'",
+      );
+    });
+
+    test('rejects empty replacement keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  "": fvm dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('non-empty'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects whitespace-only replacement keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  "   ": fvm dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('non-empty'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects blank replacement values', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  dart: '   '
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('dart'), contains('non-empty')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects unquoted && in a replacement value', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  dart: fvm dart && echo done
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('dart'), contains('unquoted `&&`')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects RIPPLE_ replacement keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  RIPPLE_ROOT_PATH: /tmp
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('RIPPLE_ROOT_PATH'), contains('reserved')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-map replacements', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  - dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('replacements'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-string replacement values', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  dart:
+    - fvm
+    - dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('dart'), contains('command string')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects non-string replacement keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  1: fvm dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must be strings'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects duplicate replacement keys after trim', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+replacements:
+  dart: fvm dart
+  " dart ": puro dart
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('duplicated'),
+          ),
+        ),
+      );
     });
 
     test('parses filtersPresets and preset filter nodes', () {

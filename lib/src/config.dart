@@ -314,6 +314,7 @@ class RippleConfig {
     this.name,
     this.packages = const RipplePackages(),
     this.scripts = const {},
+    this.replacements = const {},
   });
 
   /// Absolute path of the directory containing `ripple.yaml`.
@@ -327,6 +328,12 @@ class RippleConfig {
 
   /// Named scripts keyed by script id.
   final Map<String, RippleScript> scripts;
+
+  /// Named command aliases expanded from `{{key}}` placeholders.
+  ///
+  /// Values are command strings, parsed like `run:` / `exec:` steps (may be
+  /// multiple tokens). Keys must not be empty or start with `RIPPLE_`.
+  final Map<String, String> replacements;
 }
 
 /// File name sought when discovering the Ripple config root.
@@ -416,12 +423,98 @@ RippleConfig _configFromMap(
   final name = _optionalString(map, 'name', 'RippleConfig');
   final packages = _packagesFromValue(map['packages'], map);
   final scripts = _scriptsFromValue(map['scripts'], map);
+  final replacements = _replacementsFromValue(map['replacements'], map);
   return RippleConfig(
     rootPath: rootPath,
     name: name,
     packages: packages,
     scripts: scripts,
+    replacements: replacements,
   );
+}
+
+Map<String, String> _replacementsFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const {};
+  }
+  if (value is! Map) {
+    throw CheckedFromJsonException(
+      parent,
+      'replacements',
+      'RippleConfig',
+      'Expected a map of replacement name to command string',
+    );
+  }
+  final replacements = <String, String>{};
+  final Map<dynamic, dynamic> map = value;
+  for (final entry in map.entries) {
+    final key = entry.key;
+    if (key is! String) {
+      throw CheckedFromJsonException(
+        map,
+        key?.toString(),
+        'RippleConfig',
+        'Replacement names must be strings',
+      );
+    }
+    final trimmedKey = key.trim();
+    if (trimmedKey.isEmpty) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement names must be non-empty strings',
+      );
+    }
+    if (trimmedKey.startsWith('RIPPLE_')) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement name "$trimmedKey" is reserved; keys must not start '
+            'with RIPPLE_',
+      );
+    }
+    if (replacements.containsKey(trimmedKey)) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement name "$trimmedKey" is duplicated',
+      );
+    }
+    final replacementValue = entry.value;
+    if (replacementValue is! String) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement "$trimmedKey" must be a command string',
+      );
+    }
+    if (replacementValue.trim().isEmpty) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement "$trimmedKey" must be a non-empty command string',
+      );
+    }
+    if (_containsUnquotedAnd(replacementValue)) {
+      throw CheckedFromJsonException(
+        map,
+        key,
+        'RippleConfig',
+        'Replacement "$trimmedKey" must not contain unquoted `&&`. '
+            "Wrap shell compound commands in `sh -c '…'`.",
+      );
+    }
+    replacements[trimmedKey] = replacementValue;
+  }
+  return Map<String, String>.unmodifiable(replacements);
 }
 
 RipplePackages _packagesFromValue(
