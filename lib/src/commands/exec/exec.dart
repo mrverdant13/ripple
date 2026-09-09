@@ -140,7 +140,11 @@ class ExecCommand extends RippleCommand {
       );
       final resolvedCommand = resolveCommandReplacements(
         command,
-        replacements: config.replacements,
+        replacements: resolveReplacements(
+          config: config,
+          package: package,
+          workspacePackages: packages,
+        ),
         vars: vars,
       );
       announceCommandStart(resolvedCommand, scopeLabel: package.name);

@@ -2,8 +2,44 @@
 library;
 
 import 'package:ripple_cli/src/config.dart';
+import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
+import 'package:ripple_cli/src/filters.dart';
 import 'package:ripple_cli/src/scripts.dart';
+
+/// Resolves the replacement map for a `run:` invocation or one [package].
+///
+/// [package] `null` (root `run:` scripts) returns [RippleConfig.replacements]
+/// only. Otherwise the first matching [RippleConfig.replacementOverrides]
+/// entry is shallow-merged on top. Unspecified keys fall through.
+Map<String, String> resolveReplacements({
+  required RippleConfig config,
+  RipplePackage? package,
+  List<RipplePackage> workspacePackages = const [],
+  Map<String, List<RipplePackage>>? groupMembership,
+}) {
+  final merged = Map<String, String>.from(config.replacements);
+  if (package == null || config.replacementOverrides.isEmpty) {
+    return Map<String, String>.unmodifiable(merged);
+  }
+
+  final groups = groupMembership ??
+      resolvePackageGroups(config, packages: workspacePackages);
+
+  for (final override in config.replacementOverrides) {
+    final matches = filterPackages(
+      [package],
+      config: config,
+      criteria: PackageFilterCriteria(expression: override.filters),
+      groupMembership: groups,
+    );
+    if (matches.isNotEmpty) {
+      merged.addAll(override.replacements);
+      break;
+    }
+  }
+  return Map<String, String>.unmodifiable(merged);
+}
 
 /// Substitutes `$RIPPLE_*` in [command], then expands `{{key}}` placeholders.
 List<String> resolveCommandReplacements(
