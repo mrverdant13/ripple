@@ -392,6 +392,70 @@ class RippleConfig {
 /// File name sought when discovering the Ripple config root.
 const rippleYamlFileName = 'ripple.yaml';
 
+/// Optional host overlay next to [rippleYamlFileName] (Ripple root only).
+const rippleOverridesFileName = 'ripple_overrides.yaml';
+
+/// Overlay document that may contain only `replacements` and/or
+/// `replacementOverrides`.
+class RippleOverlay {
+  /// Creates an overlay fragment.
+  const RippleOverlay({
+    this.replacements = const {},
+    this.replacementOverrides = const [],
+  });
+
+  /// Keys that replace matching entries in [RippleConfig.replacements].
+  final Map<String, String> replacements;
+
+  /// Override entries prepended ahead of [RippleConfig.replacementOverrides].
+  final List<ReplacementOverride> replacementOverrides;
+}
+
+/// Merges [overlay] onto [base] (replacement keys replace; overrides prepend).
+RippleConfig applyRippleOverlay(RippleConfig base, RippleOverlay overlay) {
+  return RippleConfig(
+    rootPath: base.rootPath,
+    name: base.name,
+    packages: base.packages,
+    scripts: base.scripts,
+    replacements: Map<String, String>.unmodifiable({
+      ...base.replacements,
+      ...overlay.replacements,
+    }),
+    replacementOverrides: List<ReplacementOverride>.unmodifiable([
+      ...overlay.replacementOverrides,
+      ...base.replacementOverrides,
+    ]),
+  );
+}
+
+/// Loads [rippleOverridesFileName] from [config.rootPath] when it exists.
+///
+/// Missing file is not an error. A present file is parsed as an overlay and
+/// merged via [applyRippleOverlay].
+RippleConfig mergeDefaultRippleOverlay(RippleConfig config) {
+  final overlayPath = p.join(config.rootPath, rippleOverridesFileName);
+  final file = File(overlayPath);
+  if (!file.existsSync()) {
+    return config;
+  }
+  late final String contents;
+  try {
+    contents = file.readAsStringSync();
+  } on FileSystemException catch (error) {
+    throw RippleConfigException(
+      'Failed to read $overlayPath: ${error.message}',
+    );
+  }
+  return applyRippleOverlay(
+    config,
+    parseRippleOverridesYaml(
+      contents,
+      sourceUrl: p.toUri(overlayPath),
+    ),
+  );
+}
+
 /// Walks upward from [start] until a `ripple.yaml` is found.
 ///
 /// Returns the absolute path of that file. Throws [RippleConfigException] if
@@ -428,10 +492,12 @@ RippleConfig loadRippleConfig({Directory? start}) {
       'Failed to read $yamlPath: ${error.message}',
     );
   }
-  return parseRippleYaml(
-    contents,
-    rootPath: p.dirname(yamlPath),
-    sourceUrl: p.toUri(yamlPath),
+  return mergeDefaultRippleOverlay(
+    parseRippleYaml(
+      contents,
+      rootPath: p.dirname(yamlPath),
+      sourceUrl: p.toUri(yamlPath),
+    ),
   );
 }
 
@@ -441,6 +507,55 @@ RippleConfig loadRippleConfig({Directory? start}) {
 /// path itself). Throws [RippleConfigException] for invalid YAML or schema
 /// violations (including script `run`/`exec` XOR and `filters` /
 /// expansion keys on `run:`).
+/// Parses an overlay YAML document (`replacements` / `replacementOverrides`).
+///
+/// Any other top-level key is rejected.
+RippleOverlay parseRippleOverridesYaml(
+  String yamlContent, {
+  Uri? sourceUrl,
+}) {
+  try {
+    return checkedYamlDecode(
+      yamlContent,
+      (Map<dynamic, dynamic>? map) {
+        if (map == null) {
+          throw CheckedFromJsonException(
+            <String, dynamic>{},
+            null,
+            'RippleOverlay',
+            'overlay YAML must be a non-null YAML map',
+          );
+        }
+        return _overlayFromMap(map);
+      },
+      sourceUrl: sourceUrl,
+    );
+  } on ParsedYamlException catch (error) {
+    throw RippleConfigException(_parsedYamlMessage(error));
+  } on CheckedFromJsonException catch (error) {
+    throw RippleConfigException(_checkedFromJsonMessage(error));
+  }
+}
+
+RippleOverlay _overlayFromMap(Map<dynamic, dynamic> map) {
+  for (final key in map.keys) {
+    if (key != 'replacements' && key != 'replacementOverrides') {
+      throw CheckedFromJsonException(
+        map,
+        key?.toString(),
+        'RippleOverlay',
+        'Overlay files may contain only `replacements` and/or '
+            '`replacementOverrides`',
+      );
+    }
+  }
+  return RippleOverlay(
+    replacements: _replacementsFromValue(map['replacements'], map),
+    replacementOverrides:
+        _replacementOverridesFromValue(map['replacementOverrides'], map),
+  );
+}
+
 RippleConfig parseRippleYaml(
   String yamlContent, {
   required String rootPath,
