@@ -1316,6 +1316,10 @@ replacementOverrides:
         'ripple.ci.yaml',
       );
       expect(
+        (parseOverlayDescriptor('file: ripple.ci.yaml') as OverlayFile).path,
+        'ripple.ci.yaml',
+      );
+      expect(
         (parseOverlayDescriptor(r'file:C:\foo.yaml') as OverlayFile).path,
         r'C:\foo.yaml',
       );

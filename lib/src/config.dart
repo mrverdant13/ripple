@@ -447,7 +447,7 @@ OverlayDescriptor parseOverlayDescriptor(String raw) {
         'Overlay descriptor `file:` must include a path',
       );
     }
-    return OverlayFile(path);
+    return OverlayFile(path.trim());
   }
   throw RippleConfigException(
     'Invalid overlay descriptor "$raw". Expected `none`, `default`, or '
