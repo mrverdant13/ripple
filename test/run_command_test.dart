@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:ripple_cli/src/exec.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -11,6 +12,28 @@ void main() {
   final fixtureRoot = Directory(
     p.join('test', 'fixtures', 'discovery_workspace'),
   ).absolute.path;
+  final fixtureProbeScript =
+      '${p.normalize(fixtureRoot)}/../../helpers/probe.dart';
+
+  List<String> fixtureProbe(List<String> args) => [
+        'dart',
+        fixtureProbeScript,
+        ...args,
+      ];
+
+  String commandStart(String scope, List<String> args) => formatCommandStart(
+        fixtureProbe(args),
+        scopeLabel: scope,
+        color: false,
+      );
+
+  String commandEnd(String scope, List<String> args, int exitCode) =>
+      formatCommandEnd(
+        fixtureProbe(args),
+        scopeLabel: scope,
+        exitCode: exitCode,
+        color: false,
+      );
 
   Future<ProcessResult> runRipple(
     List<String> args, {
@@ -63,8 +86,8 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stderrLines(result), [
         '[ripple] ▶ (root)',
-        '[ripple][(root)] \$ pwd',
-        '[ripple][(root)] \$ pwd  (exit 0)',
+        commandStart(rootScopeLabel, ['cwd']),
+        commandEnd(rootScopeLabel, ['cwd'], 0),
         '[ripple] ■ (root)  (exit 0)',
       ]);
     });
@@ -121,10 +144,10 @@ void main() {
       expect(result.stdout, 'first-second');
       expect(stderrLines(result), [
         '[ripple] ▶ (root)',
-        '[ripple][(root)] \$ printf %s first-',
-        '[ripple][(root)] \$ printf %s first-  (exit 0)',
-        '[ripple][(root)] \$ printf %s second',
-        '[ripple][(root)] \$ printf %s second  (exit 0)',
+        commandStart(rootScopeLabel, ['write', 'first-']),
+        commandEnd(rootScopeLabel, ['write', 'first-'], 0),
+        commandStart(rootScopeLabel, ['write', 'second']),
+        commandEnd(rootScopeLabel, ['write', 'second'], 0),
         '[ripple] ■ (root)  (exit 0)',
       ]);
     });
@@ -137,8 +160,8 @@ void main() {
       expect(result.stdout, isNot(contains('after')));
       expect(stderrLines(result), [
         '[ripple] ▶ (root)',
-        '[ripple][(root)] \$ sh -c \'printf %s before-; exit 7\'',
-        '[ripple][(root)] \$ sh -c \'printf %s before-; exit 7\'  (exit 7)',
+        commandStart(rootScopeLabel, ['write-then-exit', 'before-', '7']),
+        commandEnd(rootScopeLabel, ['write-then-exit', 'before-', '7'], 7),
         '[ripple] ■ (root)  (exit 7)',
       ]);
     });
@@ -197,16 +220,16 @@ void main() {
         expect(result.exitCode, 0, reason: result.stderr as String);
         expect(stderrLines(result), [
           '[ripple] ▶ core @ packages/core',
-          '[ripple][core] \$ printf %s core-',
-          '[ripple][core] \$ printf %s core-  (exit 0)',
-          '[ripple][core] \$ printf %s step2',
-          '[ripple][core] \$ printf %s step2  (exit 0)',
+          commandStart('core', ['write', 'core-']),
+          commandEnd('core', ['write', 'core-'], 0),
+          commandStart('core', ['write', 'step2']),
+          commandEnd('core', ['write', 'step2'], 0),
           '[ripple] ■ core @ packages/core  (exit 0)',
           '[ripple] ▶ ui @ packages/ui',
-          '[ripple][ui] \$ printf %s ui-',
-          '[ripple][ui] \$ printf %s ui-  (exit 0)',
-          '[ripple][ui] \$ printf %s step2',
-          '[ripple][ui] \$ printf %s step2  (exit 0)',
+          commandStart('ui', ['write', 'ui-']),
+          commandEnd('ui', ['write', 'ui-'], 0),
+          commandStart('ui', ['write', 'step2']),
+          commandEnd('ui', ['write', 'step2'], 0),
           '[ripple] ■ ui @ packages/ui  (exit 0)',
         ]);
         expect(result.stdout, 'core-step2ui-step2');
@@ -224,20 +247,24 @@ void main() {
       ]);
 
       expect(result.exitCode, 5);
+      const failIf = [
+        'fail-if',
+        'RIPPLE_PACKAGE_NAME=core',
+        '--exit',
+        '5',
+        '--print-env',
+        'RIPPLE_PACKAGE_NAME',
+      ];
       expect(stderrLines(result), [
         '[ripple] ▶ core @ packages/core',
-        '[ripple][core] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
-            'then exit 5; fi\'',
-        '[ripple][core] \$ sh -c \'printf "%s\\n" "core"; if [ "core" = core ]; '
-            'then exit 5; fi\'  (exit 5)',
+        commandStart('core', failIf),
+        commandEnd('core', failIf, 5),
         '[ripple] ■ core @ packages/core  (exit 5)',
         '[ripple] ▶ ui @ packages/ui',
-        '[ripple][ui] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
-            'then exit 5; fi\'',
-        '[ripple][ui] \$ sh -c \'printf "%s\\n" "ui"; if [ "ui" = core ]; '
-            'then exit 5; fi\'  (exit 0)',
-        '[ripple][ui] \$ printf %s should-not-run',
-        '[ripple][ui] \$ printf %s should-not-run  (exit 0)',
+        commandStart('ui', failIf),
+        commandEnd('ui', failIf, 0),
+        commandStart('ui', ['write', 'should-not-run']),
+        commandEnd('ui', ['write', 'should-not-run'], 0),
         '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
     });

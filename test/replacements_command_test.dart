@@ -2,12 +2,37 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:ripple_cli/src/exec.dart';
 import 'package:test/test.dart';
 
 void main() {
   final repoRoot = Directory.current.path;
   final packageConfig = p.join(repoRoot, '.dart_tool', 'package_config.json');
   final rippleScript = p.join(repoRoot, 'bin', 'ripple.dart');
+  final probeScript = p.join(repoRoot, 'test', 'helpers', 'probe.dart');
+
+  String quoteScriptArg(String arg) {
+    if (RegExp(r'^[A-Za-z0-9_./:=+@%,-]+$').hasMatch(arg)) {
+      return arg;
+    }
+    return "'${arg.replaceAll("'", "'\\''")}'";
+  }
+
+  String probeEcho([String? word]) {
+    return [
+      quoteScriptArg(Platform.resolvedExecutable),
+      quoteScriptArg(probeScript),
+      'echo',
+      if (word != null) word,
+    ].join(' ');
+  }
+
+  List<String> probeEchoArgv(List<String> words) => [
+        Platform.resolvedExecutable,
+        probeScript,
+        'echo',
+        ...words,
+      ];
 
   late Directory workspace;
 
@@ -70,7 +95,7 @@ void main() {
         () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo REPLACED
+  dart: ${probeEcho('REPLACED')}
 packages:
   include:
     - packages/*
@@ -80,6 +105,7 @@ scripts:
 ''');
 
       final result = await runRipple(['run', 'analyze']);
+      final command = probeEchoArgv(['REPLACED', 'analyze', '.']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['REPLACED analyze .']);
@@ -87,8 +113,13 @@ scripts:
         stderrLines(result),
         [
           '[ripple] ▶ core @ packages/core',
-          '[ripple][core] \$ echo REPLACED analyze .',
-          '[ripple][core] \$ echo REPLACED analyze .  (exit 0)',
+          formatCommandStart(command, scopeLabel: 'core', color: false),
+          formatCommandEnd(
+            command,
+            scopeLabel: 'core',
+            exitCode: 0,
+            color: false,
+          ),
           '[ripple] ■ core @ packages/core  (exit 0)',
         ],
       );
@@ -97,13 +128,14 @@ scripts:
     test('run: script expands replacements at the root', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo REPLACED
+  dart: ${probeEcho('REPLACED')}
 scripts:
   format:
     run: "{{dart}} format ."
 ''');
 
       final result = await runRipple(['run', 'format']);
+      final command = probeEchoArgv(['REPLACED', 'format', '.']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['REPLACED format .']);
@@ -111,8 +143,17 @@ scripts:
         stderrLines(result),
         [
           '[ripple] ▶ (root)',
-          '[ripple][(root)] \$ echo REPLACED format .',
-          '[ripple][(root)] \$ echo REPLACED format .  (exit 0)',
+          formatCommandStart(
+            command,
+            scopeLabel: rootScopeLabel,
+            color: false,
+          ),
+          formatCommandEnd(
+            command,
+            scopeLabel: rootScopeLabel,
+            exitCode: 0,
+            color: false,
+          ),
           '[ripple] ■ (root)  (exit 0)',
         ],
       );
@@ -121,7 +162,7 @@ scripts:
     test('ripple exec expands {{key}} from the command line', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo REPLACED
+  dart: ${probeEcho('REPLACED')}
 packages:
   include:
     - packages/*
@@ -141,14 +182,20 @@ packages:
       expect(stdoutLines(result), ['REPLACED analyze .']);
       expect(
         stderrLines(result),
-        contains('[ripple][core] \$ echo REPLACED analyze .'),
+        contains(
+          formatCommandStart(
+            probeEchoArgv(['REPLACED', 'analyze', '.']),
+            scopeLabel: 'core',
+            color: false,
+          ),
+        ),
       );
     });
 
     test('unknown placeholder fails clearly', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo REPLACED
+  dart: ${probeEcho('REPLACED')}
 packages:
   include:
     - packages/*
@@ -181,9 +228,9 @@ packages:
     });
 
     test('substitutes RIPPLE vars in replacement values', () async {
-      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync(r'''
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo $RIPPLE_PACKAGE_NAME
+  dart: ${probeEcho(r'$RIPPLE_PACKAGE_NAME')}
 packages:
   include:
     - packages/*
@@ -206,16 +253,16 @@ scripts:
           .writeAsStringSync('name: legacy\n');
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 replacementOverrides:
   - filters:
       - match: [legacy]
     replacements:
-      dart: echo OVERRIDE
+      dart: ${probeEcho('OVERRIDE')}
   - filters:
       - match: [legacy]
     replacements:
-      dart: echo SECOND
+      dart: ${probeEcho('SECOND')}
 packages:
   include:
     - packages/*
@@ -234,12 +281,12 @@ packages:
           .writeAsStringSync('name: legacy\n');
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 replacementOverrides:
   - filters:
       - match: [legacy]
     replacements:
-      dart: echo OVERRIDE
+      dart: ${probeEcho('OVERRIDE')}
 packages:
   include:
     - packages/*
@@ -257,7 +304,7 @@ scripts:
     test('--override=none skips ripple_overrides.yaml', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
@@ -265,7 +312,7 @@ packages:
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple([
@@ -284,19 +331,19 @@ replacements:
     test('--override=file loads that overlay and beats env', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
 ''');
       File(p.join(workspace.path, 'ripple.ci.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo CI
+  dart: ${probeEcho('CI')}
 ''');
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple(
@@ -320,7 +367,7 @@ replacements:
     test('RIPPLE_OVERRIDE=none skips the default overlay file', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
@@ -328,7 +375,7 @@ packages:
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple(
@@ -345,7 +392,7 @@ replacements:
     test('bare --override path is rejected', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
@@ -367,14 +414,14 @@ packages:
     test('RIPPLE_OVERRIDE=file selects an overlay file', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
 ''');
       File(p.join(workspace.path, 'ripple.ci.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo CI
+  dart: ${probeEcho('CI')}
 ''');
 
       final result = await runRipple(
@@ -391,19 +438,19 @@ replacements:
     test('--override=default beats RIPPLE_OVERRIDE=file', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
 ''');
       File(p.join(workspace.path, 'ripple.ci.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo CI
+  dart: ${probeEcho('CI')}
 ''');
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple(
@@ -427,7 +474,7 @@ replacements:
     test('file: overlay errors when the file is missing', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
@@ -450,7 +497,7 @@ packages:
     test('run --override=none uses ripple.yaml replacements', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 scripts:
   format:
     run: "{{dart}} ok"
@@ -458,7 +505,7 @@ scripts:
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple(['run', '--override', 'none', 'format']);
@@ -470,7 +517,7 @@ replacements:
     test('auto-loads ripple_overrides.yaml next to ripple.yaml', () async {
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 packages:
   include:
     - packages/*
@@ -478,7 +525,7 @@ packages:
       File(p.join(workspace.path, 'ripple_overrides.yaml'))
           .writeAsStringSync('''
 replacements:
-  dart: echo LOCAL
+  dart: ${probeEcho('LOCAL')}
 ''');
 
       final result = await runRipple(['exec', '--', '{{dart}}', 'ok']);
@@ -494,12 +541,12 @@ replacements:
           .writeAsStringSync('name: legacy\n');
       File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
 replacements:
-  dart: echo DEFAULT
+  dart: ${probeEcho('DEFAULT')}
 replacementOverrides:
   - filters:
       - match: [legacy]
     replacements:
-      dart: echo OVERRIDE
+      dart: ${probeEcho('OVERRIDE')}
 scripts:
   format:
     run: "{{dart}} ok"
