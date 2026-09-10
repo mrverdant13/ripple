@@ -395,6 +395,92 @@ const rippleYamlFileName = 'ripple.yaml';
 /// Optional host overlay next to [rippleYamlFileName] (Ripple root only).
 const rippleOverridesFileName = 'ripple_overrides.yaml';
 
+/// Environment variable with the same grammar as `--override`.
+const rippleOverrideEnvVar = 'RIPPLE_OVERRIDE';
+
+/// CLI option name for `--override`.
+const overrideOptionName = 'override';
+
+/// How to pick at most one overlay file.
+sealed class OverlayDescriptor {
+  /// Creates an overlay descriptor.
+  const OverlayDescriptor();
+}
+
+/// Load no overlay (`{{key}}` still comes from `ripple.yaml`).
+final class OverlayNone extends OverlayDescriptor {
+  /// Creates a `none` descriptor.
+  const OverlayNone();
+}
+
+/// Load [rippleOverridesFileName] if it exists (absence is not an error).
+final class OverlayDefault extends OverlayDescriptor {
+  /// Creates a `default` descriptor.
+  const OverlayDefault();
+}
+
+/// Load exactly this overlay file (missing file is an error).
+final class OverlayFile extends OverlayDescriptor {
+  /// Creates a `file:<path>` descriptor. [path] is the remainder after `file:`.
+  const OverlayFile(this.path);
+
+  /// Path from the descriptor (`file:` prefix already stripped).
+  final String path;
+}
+
+/// Parses `none`, `default`, or `file:<path>`.
+///
+/// Unprefixed paths, unknown prefixes, and empty `file:` throw
+/// [RippleConfigException].
+OverlayDescriptor parseOverlayDescriptor(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed == 'none') {
+    return const OverlayNone();
+  }
+  if (trimmed == 'default') {
+    return const OverlayDefault();
+  }
+  if (trimmed.startsWith('file:')) {
+    final path = trimmed.substring('file:'.length);
+    if (path.trim().isEmpty) {
+      throw const RippleConfigException(
+        'Overlay descriptor `file:` must include a path',
+      );
+    }
+    return OverlayFile(path.trim());
+  }
+  throw RippleConfigException(
+    'Invalid overlay descriptor "$raw". Expected `none`, `default`, or '
+    '`file:<path>`',
+  );
+}
+
+/// Resolves `--override` over [rippleOverrideEnvVar].
+///
+/// A missing CLI value falls through to a non-empty env value. An empty or
+/// whitespace-only env string is treated as unset. Returns `null` when
+/// neither is set (callers then use the default auto-load).
+OverlayDescriptor? overlayDescriptorFromSources({
+  String? cli,
+  String? env,
+}) {
+  if (cli != null) {
+    return parseOverlayDescriptor(cli);
+  }
+  if (env != null && env.trim().isNotEmpty) {
+    return parseOverlayDescriptor(env);
+  }
+  return null;
+}
+
+/// Reads [rippleOverrideEnvVar] and optional CLI [cli] into a descriptor.
+OverlayDescriptor? resolveOverlayDescriptor({String? cli}) {
+  return overlayDescriptorFromSources(
+    cli: cli,
+    env: Platform.environment[rippleOverrideEnvVar],
+  );
+}
+
 /// Overlay document that may contain only `replacements` and/or
 /// `replacementOverrides`.
 class RippleOverlay {
@@ -434,9 +520,43 @@ RippleConfig applyRippleOverlay(RippleConfig base, RippleOverlay overlay) {
 /// Missing file is not an error. A present file is parsed as an overlay and
 /// merged via [applyRippleOverlay].
 RippleConfig mergeDefaultRippleOverlay(RippleConfig config) {
-  final overlayPath = p.join(config.rootPath, rippleOverridesFileName);
+  return _mergeOverlayFile(
+    config,
+    p.join(config.rootPath, rippleOverridesFileName),
+    required: false,
+  );
+}
+
+/// Applies [descriptor], defaulting to [OverlayDefault] when [descriptor] is
+/// null.
+RippleConfig applyOverlayDescriptor(
+  RippleConfig config,
+  OverlayDescriptor? descriptor,
+) {
+  final resolved = descriptor ?? const OverlayDefault();
+  return switch (resolved) {
+    OverlayNone() => config,
+    OverlayDefault() => mergeDefaultRippleOverlay(config),
+    OverlayFile(:final path) => _mergeOverlayFile(
+        config,
+        p.isAbsolute(path) ? path : p.join(config.rootPath, path),
+        required: true,
+      ),
+  };
+}
+
+RippleConfig _mergeOverlayFile(
+  RippleConfig config,
+  String overlayPath, {
+  required bool required,
+}) {
   final file = File(overlayPath);
   if (!file.existsSync()) {
+    if (required) {
+      throw RippleConfigException(
+        'Overlay file not found: $overlayPath',
+      );
+    }
     return config;
   }
   late final String contents;
@@ -481,7 +601,11 @@ String findRippleYamlPath({Directory? start}) {
 /// Loads, parses, and validates the nearest ancestor `ripple.yaml`.
 ///
 /// The returned [RippleConfig.rootPath] is the directory containing that file.
-RippleConfig loadRippleConfig({Directory? start}) {
+/// [overlay] selects which overlay file to merge; `null` uses [OverlayDefault].
+RippleConfig loadRippleConfig({
+  Directory? start,
+  OverlayDescriptor? overlay,
+}) {
   final yamlPath = findRippleYamlPath(start: start);
   final file = File(yamlPath);
   late final String contents;
@@ -492,12 +616,13 @@ RippleConfig loadRippleConfig({Directory? start}) {
       'Failed to read $yamlPath: ${error.message}',
     );
   }
-  return mergeDefaultRippleOverlay(
+  return applyOverlayDescriptor(
     parseRippleYaml(
       contents,
       rootPath: p.dirname(yamlPath),
       sourceUrl: p.toUri(yamlPath),
     ),
+    overlay,
   );
 }
 

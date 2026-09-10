@@ -61,6 +61,12 @@ class ExecCommand extends RippleCommand {
         help: 'AND a named packages.filtersPresets expression into the '
             'seed filters. May be passed multiple times.',
         valueHelp: 'name',
+      )
+      ..addOption(
+        overrideOptionName,
+        help: 'Overlay descriptor: none, default, or file:<path>. '
+            'Overrides $rippleOverrideEnvVar when both are set.',
+        valueHelp: 'descriptor',
       );
   }
 
@@ -108,7 +114,13 @@ class ExecCommand extends RippleCommand {
       );
     }
 
-    final config = loadRippleConfig();
+    final config = loadRippleConfig(
+      overlay: resolveOverlayDescriptor(
+        cli: argResults!.wasParsed(overrideOptionName)
+            ? argResults!.option(overrideOptionName)
+            : null,
+      ),
+    );
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
     final criteria = PackageFilterCriteria.fromNameGlobs(

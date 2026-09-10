@@ -1307,6 +1307,99 @@ replacementOverrides:
     });
   });
 
+  group('parseOverlayDescriptor', () {
+    test('parses none, default, and file paths', () {
+      expect(parseOverlayDescriptor('none'), isA<OverlayNone>());
+      expect(parseOverlayDescriptor(' default '), isA<OverlayDefault>());
+      expect(
+        (parseOverlayDescriptor('file:ripple.ci.yaml') as OverlayFile).path,
+        'ripple.ci.yaml',
+      );
+      expect(
+        (parseOverlayDescriptor('file: ripple.ci.yaml') as OverlayFile).path,
+        'ripple.ci.yaml',
+      );
+      expect(
+        (parseOverlayDescriptor(r'file:C:\foo.yaml') as OverlayFile).path,
+        r'C:\foo.yaml',
+      );
+    });
+
+    test('rejects a bare path', () {
+      expect(
+        () => parseOverlayDescriptor('ripple.ci.yaml'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('ripple.ci.yaml'), contains('file:<path>')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an empty file: descriptor', () {
+      expect(
+        () => parseOverlayDescriptor('file:'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include a path'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a whitespace-only file: path', () {
+      expect(
+        () => parseOverlayDescriptor('file:   '),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include a path'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an unknown prefix', () {
+      expect(
+        () => parseOverlayDescriptor('dir:overlays'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Invalid overlay descriptor'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an empty descriptor', () {
+      expect(
+        () => parseOverlayDescriptor(''),
+        throwsA(isA<RippleConfigException>()),
+      );
+    });
+
+    test('overlayDescriptorFromSources prefers CLI over env', () {
+      expect(
+        overlayDescriptorFromSources(cli: 'none', env: 'file:ripple.ci.yaml'),
+        isA<OverlayNone>(),
+      );
+      expect(
+        overlayDescriptorFromSources(env: 'default'),
+        isA<OverlayDefault>(),
+      );
+      expect(overlayDescriptorFromSources(env: ''), isNull);
+      expect(overlayDescriptorFromSources(env: '   '), isNull);
+      expect(overlayDescriptorFromSources(env: null), isNull);
+      expect(overlayDescriptorFromSources(), isNull);
+    });
+  });
+
   group('findRippleYamlPath / loadRippleConfig', () {
     late Directory tempRoot;
 
@@ -1464,6 +1557,103 @@ scripts:
         mergeDefaultRippleOverlay(config).replacements,
         {'dart': 'fvm dart'},
       );
+    });
+
+    test('OverlayNone skips a present default overlay file', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+''');
+      File(p.join(root.path, rippleOverridesFileName)).writeAsStringSync('''
+replacements:
+  dart: dart
+''');
+
+      final config = loadRippleConfig(
+        start: root,
+        overlay: const OverlayNone(),
+      );
+      expect(config.replacements, {'dart': 'fvm dart'});
+    });
+
+    test('OverlayFile loads a relative path and errors when missing', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+''');
+      File(p.join(root.path, 'ripple.ci.yaml')).writeAsStringSync('''
+replacements:
+  dart: dart
+''');
+
+      final loaded = loadRippleConfig(
+        start: root,
+        overlay: const OverlayFile('ripple.ci.yaml'),
+      );
+      expect(loaded.replacements, {'dart': 'dart'});
+
+      expect(
+        () => loadRippleConfig(
+          start: root,
+          overlay: const OverlayFile('missing.yaml'),
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Overlay file not found'),
+          ),
+        ),
+      );
+    });
+
+    test('OverlayFile accepts an absolute path', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      final overlayPath = p.join(tempRoot.path, 'external.yaml');
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+''');
+      File(overlayPath).writeAsStringSync('''
+replacements:
+  dart: echo ABS
+''');
+
+      final config = loadRippleConfig(
+        start: root,
+        overlay: OverlayFile(overlayPath),
+      );
+      expect(config.replacements, {'dart': 'echo ABS'});
+    });
+
+    test('applyOverlayDescriptor null matches OverlayDefault', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, rippleOverridesFileName)).writeAsStringSync('''
+replacements:
+  dart: dart
+''');
+      const base = RippleConfig(
+        rootPath: 'placeholder',
+        replacements: {'dart': 'fvm dart'},
+      );
+      final withRoot = RippleConfig(
+        rootPath: root.path,
+        replacements: base.replacements,
+      );
+      expect(
+        applyOverlayDescriptor(withRoot, null).replacements,
+        {'dart': 'dart'},
+      );
+      expect(
+        applyOverlayDescriptor(withRoot, const OverlayDefault()).replacements,
+        {'dart': 'dart'},
+      );
+    });
+
+    test('resolveOverlayDescriptor parses a CLI value', () {
+      expect(resolveOverlayDescriptor(cli: 'none'), isA<OverlayNone>());
     });
   });
 }
