@@ -228,6 +228,32 @@ packages:
 - A root `run: "{{dart}} format ."` always uses `fvm dart`, even when an
   override would match some package.
 
+### `ripple_overrides.yaml`
+
+If `ripple_overrides.yaml` exists **next to** `ripple.yaml` (the Ripple root,
+not the current working directory), Ripple merges it after loading the main
+config:
+
+- Overlay `replacements` keys **replace** matching keys in `ripple.yaml`.
+- Overlay `replacementOverrides` are **prepended** (they win first-match
+  before committed overrides).
+
+The overlay file may contain **only** `replacements` and/or
+`replacementOverrides`. Any other top-level key is an error. If the file is
+absent, behavior is unchanged.
+
+Use this for machine-local pins (FVM on a laptop) that should not be
+committed. Add it to the consumer repo's `.gitignore`. CI should keep using
+`ripple.yaml` only — do not commit `ripple_overrides.yaml`. There is currently
+no flag to skip a present default overlay (rename or delete the file).
+
+```yaml
+# ripple_overrides.yaml (gitignored)
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+```
+
 Another pattern: PATH Dart for packages without Flutter, FVM for apps:
 
 ```yaml

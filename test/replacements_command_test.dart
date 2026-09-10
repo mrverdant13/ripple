@@ -250,6 +250,26 @@ scripts:
       expect(stdoutLines(result), ['DEFAULT ok', 'OVERRIDE ok']);
     });
 
+    test('auto-loads ripple_overrides.yaml next to ripple.yaml', () async {
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: echo DEFAULT
+packages:
+  include:
+    - packages/*
+''');
+      File(p.join(workspace.path, 'ripple_overrides.yaml'))
+          .writeAsStringSync('''
+replacements:
+  dart: echo LOCAL
+''');
+
+      final result = await runRipple(['exec', '--', '{{dart}}', 'ok']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['LOCAL ok']);
+    });
+
     test('run: script ignores replacementOverrides', () async {
       Directory(p.join(workspace.path, 'packages', 'legacy'))
           .createSync(recursive: true);

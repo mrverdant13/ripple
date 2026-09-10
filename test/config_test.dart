@@ -1219,6 +1219,94 @@ scripts:
     });
   });
 
+  group('parseRippleOverridesYaml / applyRippleOverlay', () {
+    test('parses replacements and prepends override entries on merge', () {
+      final overlay = parseRippleOverridesYaml('''
+replacements:
+  dart: dart
+replacementOverrides:
+  - filters:
+      - match: [ci]
+    replacements:
+      dart: echo CI
+''');
+      expect(overlay.replacements, {'dart': 'dart'});
+      expect(overlay.replacementOverrides, [
+        const ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['ci']),
+          ]),
+          replacements: {'dart': 'echo CI'},
+        ),
+      ]);
+
+      const base = RippleConfig(
+        rootPath: '/r',
+        replacements: {'dart': 'fvm dart', 'flutter': 'fvm flutter'},
+        replacementOverrides: [
+          ReplacementOverride(
+            filters: FilterAnd([
+              FilterMatch(['legacy']),
+            ]),
+            replacements: {'dart': 'puro dart'},
+          ),
+        ],
+      );
+      final merged = applyRippleOverlay(base, overlay);
+      expect(merged.replacements, {'dart': 'dart', 'flutter': 'fvm flutter'});
+      expect(merged.replacementOverrides.first,
+          overlay.replacementOverrides.first);
+      expect(merged.replacementOverrides.last, base.replacementOverrides.first);
+      expect(merged.rootPath, '/r');
+    });
+
+    test('allows an empty overlay map', () {
+      final overlay = parseRippleOverridesYaml('{}\n');
+      expect(overlay.replacements, isEmpty);
+      expect(overlay.replacementOverrides, isEmpty);
+    });
+
+    test('rejects unknown overlay keys', () {
+      expect(
+        () => parseRippleOverridesYaml('scripts:\n  x:\n    run: echo\n'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('scripts'), contains('only')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a non-map overlay document', () {
+      expect(
+        () => parseRippleOverridesYaml('- just a list\n'),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Not a map'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects malformed overlay YAML', () {
+      expect(
+        () => parseRippleOverridesYaml('replacements: [\n'),
+        throwsA(isA<RippleConfigException>()),
+      );
+    });
+
+    test('rejects a null overlay document', () {
+      expect(
+        () => parseRippleOverridesYaml(''),
+        throwsA(isA<RippleConfigException>()),
+      );
+    });
+  });
+
   group('findRippleYamlPath / loadRippleConfig', () {
     late Directory tempRoot;
 
@@ -1270,6 +1358,111 @@ scripts:
             contains('No ripple.yaml found'),
           ),
         ),
+      );
+    });
+
+    test('loadRippleConfig ignores a missing ripple_overrides.yaml', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+''');
+
+      final config = loadRippleConfig(start: root);
+      expect(config.replacements, {'dart': 'fvm dart'});
+      expect(config.replacementOverrides, isEmpty);
+    });
+
+    test('loadRippleConfig merges ripple_overrides.yaml when present', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+  flutter: fvm flutter
+replacementOverrides:
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: puro dart
+''');
+      File(p.join(root.path, rippleOverridesFileName)).writeAsStringSync('''
+replacements:
+  dart: dart
+replacementOverrides:
+  - filters:
+      - match: [ci]
+    replacements:
+      dart: echo CI
+''');
+
+      final config = loadRippleConfig(start: root);
+      expect(config.replacements, {'dart': 'dart', 'flutter': 'fvm flutter'});
+      expect(config.replacementOverrides, [
+        const ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['ci']),
+          ]),
+          replacements: {'dart': 'echo CI'},
+        ),
+        const ReplacementOverride(
+          filters: FilterAnd([
+            FilterMatch(['legacy']),
+          ]),
+          replacements: {'dart': 'puro dart'},
+        ),
+      ]);
+    });
+
+    test('loadRippleConfig reads overlay from the Ripple root, not cwd', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      final nested = Directory(p.join(root.path, 'packages', 'a'))
+        ..createSync(recursive: true);
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: fvm dart
+''');
+      File(p.join(root.path, rippleOverridesFileName)).writeAsStringSync('''
+replacements:
+  dart: dart
+''');
+      File(p.join(nested.path, rippleOverridesFileName)).writeAsStringSync('''
+replacements:
+  dart: WRONG
+''');
+
+      final config = loadRippleConfig(start: nested);
+      expect(config.replacements, {'dart': 'dart'});
+    });
+
+    test('loadRippleConfig rejects an invalid overlay file', () {
+      final root = Directory(p.join(tempRoot.path, 'repo'))..createSync();
+      File(p.join(root.path, 'ripple.yaml')).writeAsStringSync('name: demo\n');
+      File(p.join(root.path, rippleOverridesFileName)).writeAsStringSync('''
+scripts:
+  bad:
+    run: echo
+''');
+
+      expect(
+        () => loadRippleConfig(start: root),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('only'),
+          ),
+        ),
+      );
+    });
+
+    test('mergeDefaultRippleOverlay is a no-op when the file is absent', () {
+      const config = RippleConfig(
+        rootPath: '/does/not/exist',
+        replacements: {'dart': 'fvm dart'},
+      );
+      expect(
+        mergeDefaultRippleOverlay(config).replacements,
+        {'dart': 'fvm dart'},
       );
     });
   });
