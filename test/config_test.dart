@@ -1394,6 +1394,7 @@ replacementOverrides:
         isA<OverlayDefault>(),
       );
       expect(overlayDescriptorFromSources(env: ''), isNull);
+      expect(overlayDescriptorFromSources(env: '   '), isNull);
       expect(overlayDescriptorFromSources(env: null), isNull);
       expect(overlayDescriptorFromSources(), isNull);
     });

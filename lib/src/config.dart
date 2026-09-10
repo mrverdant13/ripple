@@ -457,9 +457,9 @@ OverlayDescriptor parseOverlayDescriptor(String raw) {
 
 /// Resolves `--override` over [rippleOverrideEnvVar].
 ///
-/// A missing CLI value falls through to a non-empty env value. An empty env
-/// string is treated as unset. Returns `null` when neither is set (callers
-/// then use the default auto-load).
+/// A missing CLI value falls through to a non-empty env value. An empty or
+/// whitespace-only env string is treated as unset. Returns `null` when
+/// neither is set (callers then use the default auto-load).
 OverlayDescriptor? overlayDescriptorFromSources({
   String? cli,
   String? env,
@@ -467,7 +467,7 @@ OverlayDescriptor? overlayDescriptorFromSources({
   if (cli != null) {
     return parseOverlayDescriptor(cli);
   }
-  if (env != null && env.isNotEmpty) {
+  if (env != null && env.trim().isNotEmpty) {
     return parseOverlayDescriptor(env);
   }
   return null;

@@ -248,7 +248,7 @@ committed. Add it to the consumer repo's `.gitignore`. Do not commit
 
 Select the overlay with `--override` or `RIPPLE_OVERRIDE` (same grammar;
 `--override` wins when both are set). Unprefixed paths are errors. An empty
-env value is unset.
+or whitespace-only env value is unset.
 
 | Descriptor | Behavior |
 | --- | --- |
