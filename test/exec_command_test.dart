@@ -2,15 +2,37 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:ripple_cli/src/exec.dart';
 import 'package:test/test.dart';
 
 void main() {
   final repoRoot = Directory.current.path;
   final packageConfig = p.join(repoRoot, '.dart_tool', 'package_config.json');
   final rippleScript = p.join(repoRoot, 'bin', 'ripple.dart');
+  final probeScript = p.join(repoRoot, 'test', 'helpers', 'probe.dart');
   final fixtureRoot = Directory(
     p.join('test', 'fixtures', 'discovery_workspace'),
   ).absolute.path;
+
+  List<String> probe(List<String> args) => [
+        Platform.resolvedExecutable,
+        probeScript,
+        ...args,
+      ];
+
+  String commandStart(String scope, List<String> args) => formatCommandStart(
+        probe(args),
+        scopeLabel: scope,
+        color: false,
+      );
+
+  String commandEnd(String scope, List<String> args, int exitCode) =>
+      formatCommandEnd(
+        probe(args),
+        scopeLabel: scope,
+        exitCode: exitCode,
+        color: false,
+      );
 
   Future<ProcessResult> runRipple(
     List<String> args, {
@@ -58,8 +80,7 @@ void main() {
         '--match',
         'ui',
         '--',
-        'printenv',
-        'RIPPLE_PACKAGE_NAME',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -72,8 +93,7 @@ void main() {
         '--match',
         'u*',
         '--',
-        'printenv',
-        'RIPPLE_PACKAGE_NAME',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -88,19 +108,18 @@ void main() {
         '--match',
         'ui',
         '--',
-        'printenv',
-        'RIPPLE_PACKAGE_NAME',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stderrLines(result), [
         '[ripple] ▶ core @ packages/core',
-        '[ripple][core] \$ printenv RIPPLE_PACKAGE_NAME',
-        '[ripple][core] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
+        commandStart('core', ['env', 'RIPPLE_PACKAGE_NAME']),
+        commandEnd('core', ['env', 'RIPPLE_PACKAGE_NAME'], 0),
         '[ripple] ■ core @ packages/core  (exit 0)',
         '[ripple] ▶ ui @ packages/ui',
-        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME',
-        '[ripple][ui] \$ printenv RIPPLE_PACKAGE_NAME  (exit 0)',
+        commandStart('ui', ['env', 'RIPPLE_PACKAGE_NAME']),
+        commandEnd('ui', ['env', 'RIPPLE_PACKAGE_NAME'], 0),
         '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
       expect(stdoutLines(result), ['core', 'ui']);
@@ -116,9 +135,7 @@ void main() {
           '--match',
           'ui',
           '--',
-          'sh',
-          '-c',
-          'IFS= read -r line; printf %s "\$line"',
+          ...probe(['stdin']),
         ],
         workingDirectory: fixtureRoot,
         environment: Platform.environment,
@@ -136,6 +153,12 @@ void main() {
     });
 
     test('end banner reports non-zero package exit codes', () async {
+      const failIf = [
+        'fail-if',
+        'RIPPLE_PACKAGE_NAME=core',
+        '--exit',
+        '3',
+      ];
       final result = await runRipple([
         'exec',
         '--match',
@@ -143,20 +166,18 @@ void main() {
         '--match',
         'ui',
         '--',
-        'sh',
-        '-c',
-        'if [ "\$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi',
+        ...probe(failIf),
       ]);
 
       expect(result.exitCode, 3);
       expect(stderrLines(result), [
         '[ripple] ▶ core @ packages/core',
-        '[ripple][core] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'',
-        '[ripple][core] \$ sh -c \'if [ "core" = core ]; then exit 3; fi\'  (exit 3)',
+        commandStart('core', failIf),
+        commandEnd('core', failIf, 3),
         '[ripple] ■ core @ packages/core  (exit 3)',
         '[ripple] ▶ ui @ packages/ui',
-        '[ripple][ui] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'',
-        '[ripple][ui] \$ sh -c \'if [ "ui" = core ]; then exit 3; fi\'  (exit 0)',
+        commandStart('ui', failIf),
+        commandEnd('ui', failIf, 0),
         '[ripple] ■ ui @ packages/ui  (exit 0)',
       ]);
     });
@@ -167,7 +188,7 @@ void main() {
         '--match',
         'ui',
         '--',
-        'pwd',
+        ...probe(['cwd']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -183,12 +204,12 @@ void main() {
         '--match',
         'ui',
         '--',
-        'sh',
-        '-c',
-        'printf "%s\\n%s\\n%s\\n" '
-            '"\$RIPPLE_ROOT_PATH" '
-            '"\$RIPPLE_PACKAGE_PATH" '
-            '"\$RIPPLE_PACKAGE_NAME"',
+        ...probe([
+          'env',
+          'RIPPLE_ROOT_PATH',
+          'RIPPLE_PACKAGE_PATH',
+          'RIPPLE_PACKAGE_NAME',
+        ]),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -205,9 +226,7 @@ void main() {
         '--match',
         'ui',
         '--',
-        'printf',
-        '%s',
-        r'$RIPPLE_PACKAGE_NAME',
+        ...probe(['write', r'$RIPPLE_PACKAGE_NAME']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -220,8 +239,7 @@ void main() {
         '--dir-exists',
         'test',
         '--',
-        'printenv',
-        'RIPPLE_PACKAGE_NAME',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
@@ -236,10 +254,14 @@ void main() {
         '--match',
         'ui',
         '--',
-        'sh',
-        '-c',
-        'printf "%s\\n" "\$RIPPLE_PACKAGE_NAME"; '
-            'if [ "\$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi',
+        ...probe([
+          'fail-if',
+          'RIPPLE_PACKAGE_NAME=core',
+          '--exit',
+          '3',
+          '--print-env',
+          'RIPPLE_PACKAGE_NAME',
+        ]),
       ]);
 
       expect(result.exitCode, 3);
@@ -255,10 +277,14 @@ void main() {
         '--match',
         'ui',
         '--',
-        'sh',
-        '-c',
-        'printf "%s\\n" "\$RIPPLE_PACKAGE_NAME"; '
-            'if [ "\$RIPPLE_PACKAGE_NAME" = core ]; then exit 3; fi',
+        ...probe([
+          'fail-if',
+          'RIPPLE_PACKAGE_NAME=core',
+          '--exit',
+          '3',
+          '--print-env',
+          'RIPPLE_PACKAGE_NAME',
+        ]),
       ]);
 
       expect(result.exitCode, 3);

@@ -467,6 +467,19 @@ void main() {
   });
 
   group('runProcess', () {
+    final probeScript = p.join(
+      Directory.current.path,
+      'test',
+      'helpers',
+      'probe.dart',
+    );
+
+    List<String> probe(List<String> args) => [
+          Platform.resolvedExecutable,
+          probeScript,
+          ...args,
+        ];
+
     test('runs a command with cwd and returns exit code', () async {
       final temp = Directory.systemTemp.createTempSync('ripple_exec_helper_');
       addTearDown(() {
@@ -477,7 +490,7 @@ void main() {
 
       final marker = File(p.join(temp.path, 'marker.txt'));
       final result = await runProcess(
-        ['sh', '-c', 'printf ok > marker.txt'],
+        probe(['write-file', 'marker.txt', 'ok']),
         workingDirectory: temp.path,
         inheritStdio: false,
       );
@@ -488,7 +501,7 @@ void main() {
 
     test('merges RIPPLE_* into the child environment', () async {
       final result = await runProcess(
-        ['printenv', ripplePackageNameEnvVar],
+        probe(['env', ripplePackageNameEnvVar]),
         workingDirectory: Directory.current.path,
         environment: const {ripplePackageNameEnvVar: 'ui'},
         inheritStdio: false,
@@ -499,19 +512,10 @@ void main() {
     });
 
     test('can omit parent environment variables', () async {
-      final path = Platform.environment['PATH'];
-      expect(path, isNotNull);
-
       final result = await runProcess(
-        [
-          'sh',
-          '-c',
-          'if printenv RIPPLE_PACKAGE_NAME >/dev/null 2>&1; then exit 11; fi; '
-              'printenv RIPPLE_ROOT_PATH',
-        ],
+        probe(['env-root-only']),
         workingDirectory: Directory.current.path,
         environment: {
-          'PATH': path!,
           rippleRootPathEnvVar: '/repo',
           // Present in this map would be visible; omitting it proves parent
           // values are not inherited when includeParentEnvironment is false.
@@ -526,7 +530,7 @@ void main() {
 
     test('propagates non-zero exit codes', () async {
       final result = await runProcess(
-        ['sh', '-c', 'exit 7'],
+        probe(['exit', '7']),
         workingDirectory: Directory.current.path,
         inheritStdio: false,
       );
