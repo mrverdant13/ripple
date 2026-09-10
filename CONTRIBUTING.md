@@ -127,8 +127,10 @@ dart analyze --fatal-infos --fatal-warnings .
 dart test
 ```
 
-CI runs `format.ci`, `analyze.ci`, and `test.ci` on pull requests and pushes to
-`main`.
+CI runs on pull requests, pushes to `main`, and manual `workflow_dispatch`:
+
+- `format.ci` and `analyze.ci` on Ubuntu
+- `test.ci` on Ubuntu, macOS, and Windows
 
 ### Install from git (consumers)
 
