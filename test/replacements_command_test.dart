@@ -19,12 +19,14 @@ void main() {
   }
 
   String probeEcho([String? word]) {
-    return [
-      quoteScriptArg(Platform.resolvedExecutable),
-      quoteScriptArg(probeScript),
-      'echo',
-      if (word != null) word,
-    ].join(' ');
+    return jsonEncode(
+      [
+        quoteScriptArg(Platform.resolvedExecutable),
+        quoteScriptArg(probeScript),
+        'echo',
+        if (word != null) word,
+      ].join(' '),
+    );
   }
 
   List<String> probeEchoArgv(List<String> words) => [
@@ -71,6 +73,8 @@ void main() {
               (environment == null || !environment.containsKey(key)),
         ),
       includeParentEnvironment: false,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
     );
   }
 
