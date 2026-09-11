@@ -103,8 +103,9 @@ scripts:
     exec: "{{dart}} analyze --fatal-infos --fatal-warnings ."
 ```
 
-YAML must quote a command string that starts with `{{`. Ad-hoc
-`ripple exec -- {{dart}} analyze .` can stay unquoted in bash.
+YAML must quote a command string that starts with `{{`. In PowerShell
+(Windows), quote each placeholder token; in bash or cmd that quoting is
+optional (see [Shell quoting](#shell-quoting)).
 
 ## `ripple.yaml`
 
@@ -187,6 +188,27 @@ scripts:
 Configs without `replacements` are unchanged. Placeholders in commands then
 fail as unknown keys.
 
+#### Shell quoting
+
+Quoting each `{{key}}` token is **required in PowerShell** (the default
+shell on Windows, including GitHub Actions `windows-latest`) and
+**optional in bash and cmd**:
+
+```bash
+ripple exec -- '{{dart}}' analyze .
+```
+
+Unquoted `{...}` is a PowerShell script block. PowerShell rewrites
+`{{dart}}` to `-encodedCommand …` before Ripple starts, so the child
+executable becomes `-encodedCommand` and fails. bash (Linux, macOS, Git
+Bash) and `cmd.exe` leave the token alone, so the unquoted form works
+there.
+
+Quote **only** the placeholder. `'{{dart}} analyze .'` as one argument is
+a single argv token: Ripple expands `{{dart}}` and attaches ` analyze .`
+to the last replacement token instead of passing `analyze` and `.`
+separately.
+
 ### `replacementOverrides`
 
 A list of `{ filters, replacements }` entries. `filters` is the same list-form
@@ -261,8 +283,8 @@ PATH Dart in CI is an explicit overlay file, not `none`:
 
 ```bash
 RIPPLE_OVERRIDE=file:ripple.ci.yaml ripple run analyze
-ripple exec --override=none -- {{dart}} analyze .
-ripple exec --override=default -- {{dart}} analyze .
+ripple exec --override=none -- '{{dart}}' analyze .
+ripple exec --override=default -- '{{dart}}' analyze .
 ```
 
 ```yaml
@@ -489,10 +511,13 @@ inserts a newline before the next banner so markers stay on their own line.
 
 ```bash
 ripple exec -- dart analyze .
-ripple exec -- {{dart}} analyze .
+ripple exec -- '{{dart}}' analyze .
 ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ```
+
+Quoting each `{{key}}` token is required in PowerShell and optional in
+bash and cmd. See [Shell quoting](#shell-quoting).
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
