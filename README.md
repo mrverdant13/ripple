@@ -103,9 +103,9 @@ scripts:
     exec: "{{dart}} analyze --fatal-infos --fatal-warnings ."
 ```
 
-YAML must quote a command string that starts with `{{`. On the command
-line, quote each placeholder token so the shell does not interpret
-`{...}` (see [Shell quoting](#shell-quoting)).
+YAML must quote a command string that starts with `{{`. On Windows,
+quote each placeholder token in the shell; on Linux and macOS that
+quoting is optional (see [Shell quoting](#shell-quoting)).
 
 ## `ripple.yaml`
 
@@ -190,7 +190,8 @@ fail as unknown keys.
 
 #### Shell quoting
 
-Quote each `{{key}}` token when you type it in a shell (local or CI):
+Quoting each `{{key}}` token is **required on Windows** and **optional on
+Linux and macOS**:
 
 ```bash
 ripple exec -- '{{dart}}' analyze .
@@ -199,8 +200,8 @@ ripple exec -- '{{dart}}' analyze .
 Unquoted `{...}` is a PowerShell script block. On Windows — including
 GitHub Actions `windows-latest` — the shell rewrites `{{dart}}` to
 `-encodedCommand …` before Ripple starts, so the child executable becomes
-`-encodedCommand` and fails. Unquoted placeholders work in bash only;
-quoting is the portable form.
+`-encodedCommand` and fails. Bash on Linux and macOS leaves the token
+alone, so the unquoted form works there.
 
 Quote **only** the placeholder. `'{{dart}} analyze .'` as one argument is
 a single argv token: Ripple expands `{{dart}}` and attaches ` analyze .`
@@ -514,7 +515,8 @@ ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ```
 
-Quote each `{{key}}` token. See [Shell quoting](#shell-quoting).
+Quoting each `{{key}}` token is required on Windows and optional on Linux
+and macOS. See [Shell quoting](#shell-quoting).
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
