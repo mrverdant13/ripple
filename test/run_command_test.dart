@@ -53,6 +53,8 @@ void main() {
         ...?environment,
       },
       includeParentEnvironment: false,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
     );
   }
 
@@ -108,6 +110,8 @@ void main() {
         workingDirectory: fixtureRoot,
         environment: environment,
         includeParentEnvironment: false,
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
       );
 
       expect(result.exitCode, 0, reason: result.stderr as String);

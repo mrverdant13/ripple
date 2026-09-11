@@ -30,6 +30,8 @@ void main() {
         ...?environment,
       },
       includeParentEnvironment: false,
+      stdoutEncoding: utf8,
+      stderrEncoding: utf8,
     );
   }
 
