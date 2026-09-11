@@ -54,14 +54,15 @@ List<String> resolveCommandReplacements(
   );
 }
 
-/// Expands non-nested `{{key}}` placeholders in [command].
+/// Expands `{{key}}` placeholders in [command].
 ///
 /// [command] should already have `$RIPPLE_*` substitution applied. Replacement
 /// **values** still receive `$RIPPLE_*` substitution via [vars], then are
-/// parsed like script steps. Spliced tokens are not re-scanned.
+/// parsed like script steps. Placeholders inside those values are expanded
+/// recursively. Bare tokens and spliced argv are not treated as keys.
 ///
-/// Unknown keys, empty `{{}}`, nested `{{`, and unclosed `{{` throw
-/// [RippleConfigException].
+/// Unknown keys, empty `{{}}`, nested `{{`, unclosed `{{`, and circular
+/// references throw [RippleConfigException].
 List<String> expandReplacements(
   List<String> command, {
   required Map<String, String> replacements,
@@ -71,10 +72,16 @@ List<String> expandReplacements(
     return const [];
   }
 
-  final parsedValues = <String, List<String>>{};
+  final expandedValues = <String, List<String>>{};
 
-  List<String>? tokensFor(String key) {
-    final cached = parsedValues[key];
+  List<String>? tokensFor(String key, List<String> stack) {
+    if (stack.contains(key)) {
+      final cycle = [...stack, key].join(' -> ');
+      throw RippleConfigException(
+        'Circular replacement reference: $cycle',
+      );
+    }
+    final cached = expandedValues[key];
     if (cached != null) {
       return cached;
     }
@@ -85,8 +92,19 @@ List<String> expandReplacements(
     final tokens = parseScriptCommand(
       substituteRippleVars([raw], vars: vars).single,
     );
-    parsedValues[key] = tokens;
-    return tokens;
+    final nextStack = [...stack, key];
+    final expanded = <String>[];
+    for (final token in tokens) {
+      expanded.addAll(
+        _expandArg(
+          token,
+          tokensFor: (nestedKey) => tokensFor(nestedKey, nextStack),
+          knownKeys: replacements.keys,
+        ),
+      );
+    }
+    expandedValues[key] = expanded;
+    return expanded;
   }
 
   final result = <String>[];
@@ -94,7 +112,7 @@ List<String> expandReplacements(
     result.addAll(
       _expandArg(
         arg,
-        tokensFor: tokensFor,
+        tokensFor: (key) => tokensFor(key, const []),
         knownKeys: replacements.keys,
       ),
     );

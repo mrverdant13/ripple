@@ -127,16 +127,151 @@ void main() {
       );
     });
 
-    test('does not expand placeholders inside replacement values', () {
+    test('expands placeholders inside replacement values', () {
       expect(
         expand(
           const ['{{dart}}'],
           replacements: const {
             'dart': '{{flutter}}',
-            'flutter': 'SHOULD_NOT_APPEAR',
+            'flutter': 'fvm flutter',
           },
         ),
-        ['{{flutter}}'],
+        ['fvm', 'flutter'],
+      );
+    });
+
+    test('composes coverde from dart', () {
+      expect(
+        expand(
+          const ['{{coverde}}', 'check'],
+          replacements: const {
+            'dart': 'fvm dart',
+            'coverde': '{{dart}} run coverde',
+          },
+        ),
+        ['fvm', 'dart', 'run', 'coverde', 'check'],
+      );
+    });
+
+    test('expands a longer placeholder chain', () {
+      expect(
+        expand(
+          const ['{{a}}'],
+          replacements: const {
+            'a': '{{b}} x',
+            'b': '{{c}} y',
+            'c': 'z',
+          },
+        ),
+        ['z', 'y', 'x'],
+      );
+    });
+
+    test('attaches prefix and suffix around a nested multi-token value', () {
+      expect(
+        expand(
+          const ['pre-{{coverde}}-post'],
+          replacements: const {
+            'dart': 'fvm dart',
+            'coverde': '{{dart}} run coverde',
+          },
+        ),
+        ['pre-fvm', 'dart', 'run', 'coverde-post'],
+      );
+    });
+
+    test('uses the merged map so an override of dart flows into coverde', () {
+      const config = RippleConfig(
+        rootPath: '/repo',
+        replacements: {
+          'dart': 'fvm dart',
+          'coverde': '{{dart}} run coverde',
+        },
+        replacementOverrides: [
+          ReplacementOverride(
+            filters: FilterAnd([
+              FilterMatch(['legacy']),
+            ]),
+            replacements: {'dart': 'puro dart'},
+          ),
+        ],
+      );
+      const legacy = RipplePackage(
+        name: 'legacy',
+        path: '/repo/packages/legacy',
+        relativePath: 'packages/legacy',
+      );
+
+      expect(
+        expand(
+          const ['{{coverde}}'],
+          replacements: resolveReplacements(config: config, package: legacy),
+        ),
+        ['puro', 'dart', 'run', 'coverde'],
+      );
+    });
+
+    test('rejects a self-referential replacement', () {
+      expect(
+        () => expand(
+          const ['{{dart}}'],
+          replacements: const {'dart': '{{dart}}'},
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Circular replacement reference'),
+              contains('dart -> dart'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a two-key replacement cycle', () {
+      expect(
+        () => expand(
+          const ['{{dart}}'],
+          replacements: const {
+            'dart': '{{coverde}}',
+            'coverde': '{{dart}} run coverde',
+          },
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Circular replacement reference'),
+              contains('dart -> coverde -> dart'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a longer replacement cycle', () {
+      expect(
+        () => expand(
+          const ['{{a}}'],
+          replacements: const {
+            'a': '{{b}}',
+            'b': '{{c}}',
+            'c': '{{a}}',
+          },
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Circular replacement reference'),
+              contains('a -> b -> c -> a'),
+            ),
+          ),
+        ),
       );
     });
 
