@@ -103,9 +103,9 @@ scripts:
     exec: "{{dart}} analyze --fatal-infos --fatal-warnings ."
 ```
 
-YAML must quote a command string that starts with `{{`. On Windows,
-quote each placeholder token in the shell; on Linux and macOS that
-quoting is optional (see [Shell quoting](#shell-quoting)).
+YAML must quote a command string that starts with `{{`. In PowerShell
+(Windows), quote each placeholder token; in bash or cmd that quoting is
+optional (see [Shell quoting](#shell-quoting)).
 
 ## `ripple.yaml`
 
@@ -190,18 +190,19 @@ fail as unknown keys.
 
 #### Shell quoting
 
-Quoting each `{{key}}` token is **required on Windows** and **optional on
-Linux and macOS**:
+Quoting each `{{key}}` token is **required in PowerShell** (the default
+shell on Windows, including GitHub Actions `windows-latest`) and
+**optional in bash and cmd**:
 
 ```bash
 ripple exec -- '{{dart}}' analyze .
 ```
 
-Unquoted `{...}` is a PowerShell script block. On Windows — including
-GitHub Actions `windows-latest` — the shell rewrites `{{dart}}` to
-`-encodedCommand …` before Ripple starts, so the child executable becomes
-`-encodedCommand` and fails. Bash on Linux and macOS leaves the token
-alone, so the unquoted form works there.
+Unquoted `{...}` is a PowerShell script block. PowerShell rewrites
+`{{dart}}` to `-encodedCommand …` before Ripple starts, so the child
+executable becomes `-encodedCommand` and fails. bash (Linux, macOS, Git
+Bash) and `cmd.exe` leave the token alone, so the unquoted form works
+there.
 
 Quote **only** the placeholder. `'{{dart}} analyze .'` as one argument is
 a single argv token: Ripple expands `{{dart}}` and attaches ` analyze .`
@@ -515,8 +516,8 @@ ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ```
 
-Quoting each `{{key}}` token is required on Windows and optional on Linux
-and macOS. See [Shell quoting](#shell-quoting).
+Quoting each `{{key}}` token is required in PowerShell and optional in
+bash and cmd. See [Shell quoting](#shell-quoting).
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
