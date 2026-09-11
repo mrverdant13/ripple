@@ -191,7 +191,8 @@ Prioritize coverage for:
   in command arguments and in `replacements` values
 - `replacements` map parse (empty key, blank value, unquoted `&&`, `RIPPLE_*`
   keys) and `{{key}}` expansion (`fvm dart` splice, unknown / empty `{{}}`,
-  no rescan of spliced tokens, bare `dart` unchanged)
+  values expand `{{key}}`, cycles fail, spliced tokens not treated as keys,
+  bare `dart` unchanged)
 - `replacementOverrides` parse and first-matching apply (`exec` / `exec:`
   per package; `run:` uses the global map only; unspecified keys fall through)
 - Auto-load of `ripple_overrides.yaml` next to `ripple.yaml` (present / absent /

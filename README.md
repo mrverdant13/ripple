@@ -159,7 +159,7 @@ key**; flags stay outside the braces.
 replacements:
   dart: fvm dart
   flutter: fvm flutter
-  coverde: dart run coverde
+  coverde: "{{dart}} run coverde"
 
 scripts:
   analyze:
@@ -175,10 +175,14 @@ scripts:
 - `{{dart}}` with `dart: fvm dart` splices to `fvm`, `dart`. The rest of the
   command is unchanged. Bare `dart` / `flutter` outside placeholders are **not**
   rewritten.
+- Values may contain `{{key}}`. Those expand using the same merged map, so
+  `coverde: "{{dart}} run coverde"` becomes `fvm`, `dart`, `run`, `coverde`. A
+  matching `replacementOverrides` change to `dart` flows into `coverde`.
 - Unknown keys and empty `{{}}` fail with a config error. Nested `{{` inside a
-  placeholder is rejected. Spliced tokens are **not** re-scanned, so a value
-  `dart run coverde` will not then expand `dart` — write `fvm dart run coverde`
-  if you need the wrapper there.
+  placeholder is rejected. Circular references fail with a path such as
+  `dart -> coverde -> dart`. Bare tokens in values and spliced argv are **not**
+  treated as keys — `dart: fvm dart` plus a key `fvm` still yields `fvm`,
+  `dart`.
 - `$RIPPLE_*` / `${RIPPLE_*}` still substitute in command arguments **and** in
   replacement values (`dart: $RIPPLE_PACKAGE_PATH/.fvm/flutter_sdk/bin/dart`).
 - Keys must be non-empty, must not start with `RIPPLE_`, and values must be
