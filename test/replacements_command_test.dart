@@ -561,5 +561,104 @@ scripts:
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), ['DEFAULT ok']);
     });
+
+    test('run: expands nested {{key}} in replacement values', () async {
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: ${probeEcho('FVM')}
+  coverde: "{{dart}} run coverde"
+scripts:
+  check:
+    run: "{{coverde}} check"
+''');
+
+      final result = await runRipple(['run', 'check']);
+      final command = probeEchoArgv(['FVM', 'run', 'coverde', 'check']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['FVM run coverde check']);
+      expect(
+        stderrLines(result),
+        [
+          '[ripple] ▶ (root)',
+          formatCommandStart(
+            command,
+            scopeLabel: rootScopeLabel,
+            color: false,
+          ),
+          formatCommandEnd(
+            command,
+            scopeLabel: rootScopeLabel,
+            exitCode: 0,
+            color: false,
+          ),
+          '[ripple] ■ (root)  (exit 0)',
+        ],
+      );
+    });
+
+    test('exec: nested coverde follows a dart override', () async {
+      Directory(p.join(workspace.path, 'packages', 'legacy'))
+          .createSync(recursive: true);
+      File(p.join(workspace.path, 'packages', 'legacy', 'pubspec.yaml'))
+          .writeAsStringSync('name: legacy\n');
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: ${probeEcho('FVM')}
+  coverde: "{{dart}} run coverde"
+replacementOverrides:
+  - filters:
+      - match: [legacy]
+    replacements:
+      dart: ${probeEcho('PURO')}
+packages:
+  include:
+    - packages/*
+scripts:
+  check:
+    exec: "{{coverde}} check"
+''');
+
+      final result = await runRipple(['run', 'check']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'FVM run coverde check',
+        'PURO run coverde check',
+      ]);
+      expect(
+        stderrLines(result),
+        containsAllInOrder([
+          formatCommandStart(
+            probeEchoArgv(['FVM', 'run', 'coverde', 'check']),
+            scopeLabel: 'core',
+            color: false,
+          ),
+          formatCommandStart(
+            probeEchoArgv(['PURO', 'run', 'coverde', 'check']),
+            scopeLabel: 'legacy',
+            color: false,
+          ),
+        ]),
+      );
+    });
+
+    test('circular replacement reference fails clearly', () async {
+      File(p.join(workspace.path, 'ripple.yaml')).writeAsStringSync('''
+replacements:
+  dart: "{{coverde}}"
+  coverde: "{{dart}} run coverde"
+packages:
+  include:
+    - packages/*
+''');
+
+      final result = await runRipple(['exec', '--', '{{coverde}}', 'check']);
+
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('Circular replacement reference'));
+      expect(result.stderr, contains('coverde -> dart -> coverde'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
+    });
   });
 }
