@@ -1,0 +1,10 @@
+name: ripple_min_sdk_smoke
+description: Resolves and runs ripple as a consumer (no lints).
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  ripple_cli:
+    path: ../..
