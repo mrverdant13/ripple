@@ -132,7 +132,7 @@ dart test
 CI runs on pull requests, pushes to `main`, and manual `workflow_dispatch`:
 
 - `format.ci` and `analyze.ci` on Ubuntu
-- `test.ci` on Ubuntu, macOS, and Windows
+- `test.ci` on Linux, macOS, Windows PowerShell, and Windows CMD
 - min-SDK consumer smoke on Ubuntu (Dart 3.5.0; `e2e/min_sdk_smoke` only)
 
 ### Install from git (consumers)
