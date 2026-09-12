@@ -49,13 +49,28 @@ jobs:
           dart run ripple_cli:ripple list
 
   test:
-    name: Test implementation
+    name: Test (${{ matrix.name }})
     needs: min-conditions
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            shell: bash
+          - name: macOS
+            os: macos-latest
+            shell: bash
+          - name: Windows PowerShell
+            os: windows-latest
+            shell: pwsh
+          - name: Windows CMD
+            os: windows-latest
+            shell: cmd
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
