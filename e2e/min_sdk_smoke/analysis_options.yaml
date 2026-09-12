@@ -1,0 +1,6 @@
+# No package:lints — this package must resolve on the advertised min SDK.
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true

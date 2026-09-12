@@ -58,6 +58,8 @@ ripple/                         # repo root = package root
 │           └── run/run.dart
 ├── test/
 │   └── fixtures/               # mini consumer trees for discovery/filter tests
+├── e2e/
+│   └── min_sdk_smoke/          # path-dep consumer; resolve/run on min SDK
 ├── example/                    # optional demo ripple.yaml + tiny packages
 ├── README.md                   # User-facing overview
 └── CONTRIBUTING.md             # This file
@@ -163,6 +165,7 @@ All behavior changes should include or update tests.
 | --- | --- | --- |
 | Unit / integration | `test/` | Config parse, discovery, filters, scripts, CLI behavior |
 | Fixtures | `test/fixtures/` | Mini consumer trees (include/exclude decoys, XOR `run`/`exec`, multi-step lists, fail-fast, vars) |
+| E2E | `e2e/` | Isolated min-SDK consumer (`e2e/min_sdk_smoke`); no `test/` so `test.ci` skips it |
 
 Prioritize coverage for:
 
