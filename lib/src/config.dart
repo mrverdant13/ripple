@@ -1465,7 +1465,7 @@ FilterExpr _filterNodeFromValue(
           'filters',
           'FilterExpr',
           'Invalid filter at $path: `changed` must be a single descriptor '
-          'string, not a list. Use `or:` to combine multiple changed filters.',
+              'string, not a list. Use `or:` to combine multiple changed filters.',
         );
       }
       if (changedValue is! String) {
