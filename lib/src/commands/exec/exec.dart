@@ -5,6 +5,7 @@ import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
+import 'package:ripple_cli/src/git_diff.dart';
 import 'package:ripple_cli/src/replacements.dart';
 
 /// {@template ripple_cli.exec_command}
@@ -63,6 +64,12 @@ class ExecCommand extends RippleCommand {
         valueHelp: 'name',
       )
       ..addOption(
+        changedOptionName,
+        help: 'Only packages changed per a git descriptor: since:<ref>, '
+            'range:<A..B>, or workdir:<tree-ish>. Pass at most once.',
+        valueHelp: 'descriptor',
+      )
+      ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
             'Overrides $rippleOverrideEnvVar when both are set.',
@@ -94,6 +101,9 @@ class ExecCommand extends RippleCommand {
   /// Option name for `--preset`.
   static const presetOptionName = 'preset';
 
+  /// Option name for `--changed`.
+  static const changedOptionName = 'changed';
+
   @override
   String get name => 'exec';
 
@@ -123,6 +133,19 @@ class ExecCommand extends RippleCommand {
     );
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
+    final changedRaw = argResults!.option(changedOptionName);
+    String? changed;
+    if (changedRaw != null) {
+      final trimmed = changedRaw.trim();
+      if (trimmed.isEmpty) {
+        usageException(
+          'Invalid --$changedOptionName: value must be a non-empty descriptor',
+        );
+      }
+      parseChangedDescriptor(trimmed);
+      changed = trimmed;
+    }
+
     final criteria = PackageFilterCriteria.fromNameGlobs(
       match: argResults!.multiOption(matchOptionName),
       noMatch: argResults!.multiOption(noMatchOptionName),
@@ -131,6 +154,7 @@ class ExecCommand extends RippleCommand {
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
+      changed: changed,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -139,6 +163,7 @@ class ExecCommand extends RippleCommand {
       packages,
       config: config,
       criteria: criteria,
+      packagesForChangedMapping: packages,
     );
 
     final failFast = argResults!.flag(failFastFlagName);

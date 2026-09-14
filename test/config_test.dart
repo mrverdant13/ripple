@@ -978,6 +978,49 @@ scripts:
       );
     });
 
+    test('parses changed filter descriptor on exec scripts', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  analyze:
+    exec: dart analyze .
+    filters:
+      - changed: since:origin/main
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['analyze']!.filters,
+        const FilterAnd([
+          FilterChanged('since:origin/main'),
+        ]),
+      );
+    });
+
+    test('rejects list-form changed filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          - since:origin/main
+          - workdir:HEAD
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('changed` must be a single descriptor string'),
+          ),
+        ),
+      );
+    });
+
     test('rejects filter nodes with multiple keys', () {
       expect(
         () => parseRippleYaml(

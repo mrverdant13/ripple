@@ -45,6 +45,7 @@ ripple/                         # repo root = package root
 │       ├── config.dart
 │       ├── discovery.dart
 │       ├── filters.dart
+│       ├── git_diff.dart       # changed: descriptor parse + git path mapping
 │       ├── graph.dart          # Workspace dep graph + transitive closures
 │       ├── exec.dart           # Process runner helper (cwd/env/exit code)
 │       ├── replacements.dart   # {{key}} expansion from replacements map

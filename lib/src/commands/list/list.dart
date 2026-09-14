@@ -4,6 +4,7 @@ import 'package:ripple_cli/src/commands/commands.dart';
 import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/filters.dart';
+import 'package:ripple_cli/src/git_diff.dart';
 
 /// {@template ripple_cli.list_command}
 /// `ripple list` — print packages matching discovery and filter criteria.
@@ -54,6 +55,12 @@ class ListCommand extends RippleCommand {
         help: 'AND a named packages.filtersPresets expression into the '
             'seed filters. May be passed multiple times.',
         valueHelp: 'name',
+      )
+      ..addOption(
+        changedOptionName,
+        help: 'Only packages changed per a git descriptor: since:<ref>, '
+            'range:<A..B>, or workdir:<tree-ish>. Pass at most once.',
+        valueHelp: 'descriptor',
       );
   }
 
@@ -78,6 +85,9 @@ class ListCommand extends RippleCommand {
   /// Option name for `--preset`.
   static const presetOptionName = 'preset';
 
+  /// Option name for `--changed`.
+  static const changedOptionName = 'changed';
+
   @override
   String get name => 'list';
 
@@ -90,6 +100,19 @@ class ListCommand extends RippleCommand {
     final config = loadRippleConfig();
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
+    final changedRaw = argResults!.option(changedOptionName);
+    String? changed;
+    if (changedRaw != null) {
+      final trimmed = changedRaw.trim();
+      if (trimmed.isEmpty) {
+        usageException(
+          'Invalid --$changedOptionName: value must be a non-empty descriptor',
+        );
+      }
+      parseChangedDescriptor(trimmed);
+      changed = trimmed;
+    }
+
     final criteria = PackageFilterCriteria.fromNameGlobs(
       match: argResults!.multiOption(matchOptionName),
       noMatch: argResults!.multiOption(noMatchOptionName),
@@ -98,6 +121,7 @@ class ListCommand extends RippleCommand {
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
+      changed: changed,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -106,6 +130,7 @@ class ListCommand extends RippleCommand {
       packages,
       config: config,
       criteria: criteria,
+      packagesForChangedMapping: packages,
     );
 
     for (final package in filtered) {

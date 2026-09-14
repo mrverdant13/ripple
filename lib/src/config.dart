@@ -7,6 +7,8 @@ import 'package:checked_yaml/checked_yaml.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
 
+import 'git_diff.dart';
+
 /// Thrown when `ripple.yaml` cannot be found, read, parsed, or validated.
 class RippleConfigException implements Exception {
   /// Creates a config error with a human-readable [message].
@@ -170,6 +172,22 @@ final class FilterNoMatch extends FilterExpr {
 
   @override
   int get hashCode => Object.hashAll(globs);
+}
+
+/// Git `changed` descriptor leaf (`since:`, `range:`, or `workdir:`).
+final class FilterChanged extends FilterExpr {
+  /// Creates a `changed` leaf.
+  const FilterChanged(this.descriptor);
+
+  /// Single descriptor string, for example `since:origin/main`.
+  final String descriptor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterChanged && other.descriptor == descriptor;
+
+  @override
+  int get hashCode => descriptor.hashCode;
 }
 
 /// Reference to a named expression under `packages.filtersPresets`.
@@ -1377,8 +1395,8 @@ FilterExpr _filterNodeFromValue(
       'filters',
       'FilterExpr',
       'Invalid filter at $path: expected exactly one key '
-          '(and, or, preset, match, noMatch, group, dependsOn, dirExists, '
-          'fileExists), found ${map.length}',
+          '(and, or, preset, changed, match, noMatch, group, dependsOn, '
+          'dirExists, fileExists), found ${map.length}',
     );
   }
   final entry = map.entries.single;
@@ -1439,14 +1457,44 @@ FilterExpr _filterNodeFromValue(
         );
       }
       return FilterPreset(presetValue);
+    case 'changed':
+      final changedValue = entry.value;
+      if (changedValue is List) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `changed` must be a single descriptor '
+          'string, not a list. Use `or:` to combine multiple changed filters.',
+        );
+      }
+      if (changedValue is! String) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `changed` must be a string',
+        );
+      }
+      if (changedValue.trim().isEmpty) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `changed` must be a non-empty string',
+        );
+      }
+      final descriptor = changedValue.trim();
+      parseChangedDescriptor(descriptor);
+      return FilterChanged(descriptor);
     default:
       throw CheckedFromJsonException(
         parent,
         'filters',
         'FilterExpr',
         'Invalid filter at $path: unknown key "$key". Expected one of: '
-            'and, or, preset, match, noMatch, group, dependsOn, dirExists, '
-            'fileExists',
+            'and, or, preset, changed, match, noMatch, group, dependsOn, '
+            'dirExists, fileExists',
       );
   }
 }

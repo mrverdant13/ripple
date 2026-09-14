@@ -9,6 +9,7 @@ import 'package:pubspec_parse/pubspec_parse.dart';
 
 import 'config.dart';
 import 'discovery.dart';
+import 'git_diff.dart';
 import 'graph.dart';
 
 /// Environment variable for comma-separated package name selection.
@@ -51,6 +52,7 @@ class PackageFilterCriteria {
     List<String> dependsOn = const [],
     List<String> groups = const [],
     List<String> presets = const [],
+    String? changed,
     List<String>? packageNames,
   }) {
     final leaves = <FilterExpr>[
@@ -61,6 +63,7 @@ class PackageFilterCriteria {
       if (match.isNotEmpty) FilterMatch(match),
       if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
       for (final preset in presets) FilterPreset(preset),
+      if (changed != null) FilterChanged(changed),
     ];
     return PackageFilterCriteria(
       expression: _andLeaves(leaves),
@@ -180,7 +183,8 @@ FilterExpr resolveFilterPresets(
     FilterDependsOn() ||
     FilterGroup() ||
     FilterMatch() ||
-    FilterNoMatch() =>
+    FilterNoMatch() ||
+    FilterChanged() =>
       expression,
   };
 }
@@ -301,6 +305,7 @@ PackageSelection selectPackages(
     config: config,
     criteria: criteria,
     groupMembership: groupMembership,
+    packagesForChangedMapping: packages,
   );
 
   if (dependentsFilters == null && dependenciesFilters == null) {
@@ -323,6 +328,7 @@ PackageSelection selectPackages(
           config: config,
           expansion: dependentsFilters,
           groupMembership: groups,
+          allPackages: packages,
         );
   final dependencies = dependenciesFilters == null
       ? const <RipplePackage>[]
@@ -331,6 +337,7 @@ PackageSelection selectPackages(
           config: config,
           expansion: dependenciesFilters,
           groupMembership: groups,
+          allPackages: packages,
         );
 
   final selected = <String, RipplePackage>{
@@ -354,6 +361,7 @@ List<RipplePackage> _filterClosure(
   required RippleConfig config,
   required GraphExpansionFilters expansion,
   required Map<String, List<RipplePackage>> groupMembership,
+  required List<RipplePackage> allPackages,
 }) {
   final candidates = closure.toList()
     ..sort((a, b) => a.relativePath.compareTo(b.relativePath));
@@ -362,6 +370,7 @@ List<RipplePackage> _filterClosure(
     config: config,
     criteria: PackageFilterCriteria(expression: expansion.expression),
     groupMembership: groupMembership,
+    packagesForChangedMapping: allPackages,
   );
 }
 
@@ -381,6 +390,7 @@ List<RipplePackage> filterPackages(
   required RippleConfig config,
   PackageFilterCriteria criteria = const PackageFilterCriteria(),
   Map<String, List<RipplePackage>>? groupMembership,
+  List<RipplePackage>? packagesForChangedMapping,
 }) {
   if (criteria.isEmpty) {
     return List<RipplePackage>.unmodifiable(packages);
@@ -428,6 +438,11 @@ List<RipplePackage> filterPackages(
   final globCache = <String, Glob>{};
   final pubspecCache = <String, Pubspec>{};
 
+  final changedContext = _ChangedFilterMatchContext(
+    rootPath: config.rootPath,
+    mappingPackages: packagesForChangedMapping ?? packages,
+  );
+
   final filtered = <RipplePackage>[];
   for (final package in packages) {
     if (nameSet != null && !nameSet.contains(package.name)) {
@@ -440,6 +455,7 @@ List<RipplePackage> filterPackages(
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
           pubspecCache: pubspecCache,
+          changedContext: changedContext,
         )) {
       continue;
     }
@@ -460,9 +476,32 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterDependsOn() ||
     FilterMatch() ||
     FilterNoMatch() ||
-    FilterPreset() =>
+    FilterPreset() ||
+    FilterChanged() =>
       const {},
   };
+}
+
+final class _ChangedFilterMatchContext {
+  _ChangedFilterMatchContext({
+    required this.rootPath,
+    required this.mappingPackages,
+  });
+
+  final String rootPath;
+  final List<RipplePackage> mappingPackages;
+  final Map<String, Set<String>> _cache = {};
+
+  Set<String> changedOwners(FilterChanged filter) {
+    return _cache.putIfAbsent(filter.descriptor, () {
+      final descriptor = parseChangedDescriptor(filter.descriptor);
+      return changedPackageRelativePaths(
+        rootPath: rootPath,
+        descriptor: descriptor,
+        packages: mappingPackages,
+      );
+    });
+  }
 }
 
 bool _matchesExpression(
@@ -471,6 +510,7 @@ bool _matchesExpression(
   required Map<String, Set<String>> groupMemberPaths,
   required Map<String, Glob> globCache,
   required Map<String, Pubspec> pubspecCache,
+  required _ChangedFilterMatchContext changedContext,
 }) {
   return switch (expression) {
     FilterAnd(:final children) => children.every(
@@ -480,6 +520,7 @@ bool _matchesExpression(
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
           pubspecCache: pubspecCache,
+          changedContext: changedContext,
         ),
       ),
     FilterOr(:final children) => children.any(
@@ -489,6 +530,7 @@ bool _matchesExpression(
           groupMemberPaths: groupMemberPaths,
           globCache: globCache,
           pubspecCache: pubspecCache,
+          changedContext: changedContext,
         ),
       ),
     FilterDirExists(:final paths) => _matchesDirExists(package, paths),
@@ -501,6 +543,8 @@ bool _matchesExpression(
       globs.isEmpty || _matchesAnyName(package.name, globs, globCache),
     FilterNoMatch(:final globs) =>
       globs.isEmpty || !_matchesAnyName(package.name, globs, globCache),
+    final FilterChanged filter =>
+      changedContext.changedOwners(filter).contains(package.relativePath),
     // Presets are expanded by [resolveFilterPresets] before matching.
     FilterPreset(:final name) => throw StateError(
         'Unresolved filter preset "$name" during evaluation',

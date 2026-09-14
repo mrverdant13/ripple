@@ -5,6 +5,7 @@ import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
+import 'package:ripple_cli/src/git_diff.dart';
 import 'package:ripple_cli/src/replacements.dart';
 import 'package:ripple_cli/src/scripts.dart';
 
@@ -68,6 +69,13 @@ class RunCommand extends RippleCommand {
         valueHelp: 'name',
       )
       ..addOption(
+        changedOptionName,
+        help: 'Only packages changed per a git descriptor: since:<ref>, '
+            'range:<A..B>, or workdir:<tree-ish>. Pass at most once. Valid '
+            'only for exec: scripts.',
+        valueHelp: 'descriptor',
+      )
+      ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
             'Overrides $rippleOverrideEnvVar when both are set.',
@@ -98,6 +106,9 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--preset`.
   static const presetOptionName = 'preset';
+
+  /// Option name for `--changed`.
+  static const changedOptionName = 'changed';
 
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
@@ -139,6 +150,19 @@ class RunCommand extends RippleCommand {
     final script = resolveScript(config, scriptName);
 
     final group = argResults!.option(groupOptionName);
+    final changedRaw = argResults!.option(changedOptionName);
+    String? changed;
+    if (changedRaw != null) {
+      final trimmed = changedRaw.trim();
+      if (trimmed.isEmpty) {
+        usageException(
+          'Invalid --$changedOptionName: value must be a non-empty descriptor',
+        );
+      }
+      parseChangedDescriptor(trimmed);
+      changed = trimmed;
+    }
+
     final cliCriteria = PackageFilterCriteria.fromNameGlobs(
       match: argResults!.multiOption(matchOptionName),
       noMatch: argResults!.multiOption(noMatchOptionName),
@@ -147,6 +171,7 @@ class RunCommand extends RippleCommand {
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
+      changed: changed,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -157,7 +182,7 @@ class RunCommand extends RippleCommand {
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
           'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
-          '--depends-on, --preset, and unset $ripplePackagesEnvVar.',
+          '--depends-on, --preset, --changed, and unset $ripplePackagesEnvVar.',
         );
       }
 
