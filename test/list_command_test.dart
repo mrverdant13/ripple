@@ -206,6 +206,17 @@ void main() {
       expect(result.stderr, contains('No ripple.yaml found'));
     });
 
+    test('--changed since:HEAD fails with guidance', () async {
+      final result = await runRipple([
+        'list',
+        '--changed',
+        'since:HEAD',
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('workdir:HEAD'));
+    });
+
     test('--help documents the filter flags', () async {
       final result = await runRipple(
         ['list', '--help'],
@@ -216,6 +227,7 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--group'));
       expect(help, contains('--match'));
+      expect(help, contains('--changed'));
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));

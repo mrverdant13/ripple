@@ -394,6 +394,21 @@ scripts:
 | `group` | string | Package must be in that `packages.groups` entry |
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
+| `changed` | single descriptor string | Package had path changes per git (see below) |
+
+`changed` accepts **one** descriptor (not a list). Combine modes with `or:`,
+not multiple values on the same leaf:
+
+| Descriptor | Meaning |
+| --- | --- |
+| `since:<ref>` | Commit-tree diff `{ref}...HEAD` (typical CI: `since:origin/main`) |
+| `range:<A..B>` / `range:<A...B>` | Explicit git range passed to `git diff` |
+| `workdir:<tree-ish>` | Working tree vs tree-ish (local uncommitted: `workdir:HEAD`) |
+
+Ripple maps changed repo paths to packages using longest-prefix ownership
+among discovered packages (nested packages win over an ancestor root package).
+Requires a git checkout at the Ripple root. Use `workdir:HEAD` for uncommitted
+changes — not `since:HEAD` (that compares commit trees only).
 
 `preset` may appear in any filter AST (script `filters`, expansion filters,
 preset bodies, or CLI `--preset`). Unknown names and cyclic references
@@ -472,6 +487,8 @@ ripple list --dir-exists test
 ripple list --file-exists README.md
 ripple list --depends-on path
 ripple list --preset e2eTestable
+ripple list --changed since:origin/main
+ripple list --changed workdir:HEAD
 ```
 
 | Flag | Description |
@@ -483,6 +500,7 @@ ripple list --preset e2eTestable
 | `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
+| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
 
 `RIPPLE_PACKAGES` (comma-separated **exact** package names, not globs)
 intersects with `--match` / `--no-match` and every other active filter. Running
@@ -551,7 +569,7 @@ Behavior depends on the script kind:
 - **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
   Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--match`,
   `--no-match`, `--dir-exists`, `--file-exists`, `--depends-on`, `--preset`,
-  and `RIPPLE_PACKAGES`) are rejected. Begin/end stderr root-scope banners use
+  `--changed`, and `RIPPLE_PACKAGES`) are rejected. Begin/end stderr root-scope banners use
   `(root)`; each step also gets command start/end banners stamped with
   `(root)`.
 - **`exec:`** — for each matching package, runs all list steps in that package
