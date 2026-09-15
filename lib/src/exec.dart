@@ -524,8 +524,8 @@ class ProcessRunResult {
 void writeCapturedChildOutput({
   required String capturedStdout,
   required String capturedStderr,
-  IOSink? stdoutSink,
-  IOSink? stderrSink,
+  StringSink? stdoutSink,
+  StringSink? stderrSink,
 }) {
   final out = stdoutSink ?? stdout;
   final err = stderrSink ?? stderr;

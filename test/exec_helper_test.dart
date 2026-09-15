@@ -496,6 +496,62 @@ void main() {
     });
   });
 
+  group('resolveQuietMode', () {
+    test('is false when neither CLI nor script requests quiet', () {
+      expect(resolveQuietMode(cliQuiet: false), isFalse);
+      expect(
+        resolveQuietMode(cliQuiet: false, scriptQuiet: false),
+        isFalse,
+      );
+    });
+
+    test('is true when CLI or script requests quiet', () {
+      expect(resolveQuietMode(cliQuiet: true), isTrue);
+      expect(
+        resolveQuietMode(cliQuiet: false, scriptQuiet: true),
+        isTrue,
+      );
+      expect(
+        resolveQuietMode(cliQuiet: true, scriptQuiet: true),
+        isTrue,
+      );
+    });
+  });
+
+  group('writeCapturedChildOutput', () {
+    test('writes captured stdout and stderr and updates line state', () {
+      final out = StringBuffer();
+      final err = StringBuffer();
+      terminalLineState.atLineStart = true;
+
+      writeCapturedChildOutput(
+        capturedStdout: 'hello',
+        capturedStderr: 'warn\n',
+        stdoutSink: out,
+        stderrSink: err,
+      );
+
+      expect(out.toString(), 'hello');
+      expect(err.toString(), 'warn\n');
+      expect(terminalLineState.atLineStart, isTrue);
+    });
+
+    test('ignores empty captures', () {
+      final out = StringBuffer();
+      final err = StringBuffer();
+
+      writeCapturedChildOutput(
+        capturedStdout: '',
+        capturedStderr: '',
+        stdoutSink: out,
+        stderrSink: err,
+      );
+
+      expect(out.toString(), isEmpty);
+      expect(err.toString(), isEmpty);
+    });
+  });
+
   group('substituteRippleVars', () {
     const vars = {
       rippleRootPathEnvVar: '/repo',
