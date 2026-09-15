@@ -531,6 +531,7 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
+      expect(help, contains('--quiet'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -539,6 +540,92 @@ void main() {
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--override'));
+    });
+
+    test('--quiet suppresses banners and output for successful run: scripts',
+        () async {
+      final result = await runRipple(['run', '--quiet', 'root.pwd']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, isEmpty);
+      expect(result.stderr, isEmpty);
+    });
+
+    test('--quiet prints only the failing run: step', () async {
+      final result = await runRipple(['run', '--quiet', 'root.steps.fail']);
+
+      expect(result.exitCode, 7);
+      expect(result.stdout, 'before-');
+      expect(stderrLines(result), [
+        '[ripple] ▶ (root)',
+        commandStart(rootScopeLabel, ['write-then-exit', 'before-', '7']),
+        commandEnd(rootScopeLabel, ['write-then-exit', 'before-', '7'], 7),
+        '[ripple] ■ (root)  (exit 7)',
+      ]);
+    });
+
+    test('script quiet: suppresses successful exec: packages', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(stdoutLines(result), ['core']);
+      expect(stderrLines(result), [
+        '[ripple] ▶ core @ packages/core',
+        commandStart(
+          'core',
+          [
+            'fail-if',
+            'RIPPLE_PACKAGE_NAME=core',
+            '--exit',
+            '3',
+            '--print-env',
+            'RIPPLE_PACKAGE_NAME',
+          ],
+        ),
+        commandEnd(
+          'core',
+          [
+            'fail-if',
+            'RIPPLE_PACKAGE_NAME=core',
+            '--exit',
+            '3',
+            '--print-env',
+            'RIPPLE_PACKAGE_NAME',
+          ],
+          3,
+        ),
+        '[ripple] ■ core @ packages/core  (exit 3)',
+      ]);
+      expect(result.stderr, isNot(contains('ui @ packages/ui')));
+    });
+
+    test('script quiet: suppresses successful run: scripts', () async {
+      final result = await runRipple(['run', 'root.quiet']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, isEmpty);
+      expect(result.stderr, isEmpty);
+    });
+
+    test('script quiet: prints only the failing run: step', () async {
+      final result = await runRipple(['run', 'root.quiet.fail']);
+
+      expect(result.exitCode, 7);
+      expect(result.stdout, 'boom');
+      expect(stderrLines(result), [
+        '[ripple] ▶ (root)',
+        commandStart(rootScopeLabel, ['write-then-exit', 'boom', '7']),
+        commandEnd(rootScopeLabel, ['write-then-exit', 'boom', '7'], 7),
+        '[ripple] ■ (root)  (exit 7)',
+      ]);
+      expect(result.stdout, isNot(contains('ok')));
     });
   });
 }
