@@ -167,6 +167,50 @@ scripts:
       );
     });
 
+    test('parses optional script quiet', () {
+      const yaml = '''
+scripts:
+  format.ci:
+    quiet: true
+    run: dart format --set-exit-if-changed .
+  analyze.ci:
+    exec: dart analyze .
+    quiet: false
+  check.ci:
+    run: dart test
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(config.scripts['format.ci']!.quiet, isTrue);
+      expect(config.scripts['analyze.ci']!.quiet, isFalse);
+      expect(config.scripts['check.ci']!.quiet, isFalse);
+    });
+
+    test('rejects a non-boolean script quiet', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    quiet: 1
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('quiet'),
+              contains('must be a boolean'),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('defaults missing packages and scripts to empty', () {
       final config = parseRippleYaml('name: bare\n', rootPath: '/r');
       expect(config.name, 'bare');
