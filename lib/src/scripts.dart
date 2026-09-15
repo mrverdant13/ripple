@@ -20,6 +20,23 @@ RippleScript resolveScript(RippleConfig config, String name) {
   );
 }
 
+/// Returns [config.scripts] values sorted by script id.
+List<RippleScript> sortedScripts(RippleConfig config) {
+  final scripts = config.scripts.values.toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+  return List<RippleScript>.unmodifiable(scripts);
+}
+
+/// Formats one `ripple scripts` output line: id, kind, optional description.
+String formatScriptListLine(RippleScript script) {
+  final buffer = StringBuffer('${script.name}  ${script.kind.name}');
+  final description = script.description;
+  if (description != null) {
+    buffer.write('  $description');
+  }
+  return buffer.toString();
+}
+
 /// Splits a script command string into an executable plus arguments.
 ///
 /// Supports whitespace separation and single/double quotes. Does not invoke a

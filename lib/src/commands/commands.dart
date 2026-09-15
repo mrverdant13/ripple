@@ -6,3 +6,4 @@ export 'list/list.dart';
 export 'ripple_command.dart';
 export 'ripple_command_runner.dart';
 export 'run/run.dart';
+export 'scripts/scripts.dart';
