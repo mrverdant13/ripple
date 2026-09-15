@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:pubspec_parse/pubspec_parse.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:test/test.dart';
@@ -28,6 +29,41 @@ void main() {
           ripplePackagePathEnvVar: '/repo/packages/ui',
           ripplePackageNameEnvVar: 'ui',
         },
+      );
+    });
+
+    test('adds RIPPLE_PACKAGE_VERSION when the pubspec declares a version', () {
+      final package = RipplePackage(
+        name: 'ui',
+        path: '/repo/packages/ui',
+        relativePath: 'packages/ui',
+        pubspec: Pubspec.parse('name: ui\nversion: 1.2.3\n'),
+      );
+
+      expect(
+        rippleEnvironment(rootPath: '/repo', package: package),
+        {
+          rippleRootPathEnvVar: '/repo',
+          ripplePackagePathEnvVar: '/repo/packages/ui',
+          ripplePackageNameEnvVar: 'ui',
+          ripplePackageVersionEnvVar: '1.2.3',
+        },
+      );
+    });
+
+    test('omits RIPPLE_PACKAGE_VERSION when the pubspec has no version', () {
+      final package = RipplePackage(
+        name: 'ui',
+        path: '/repo/packages/ui',
+        relativePath: 'packages/ui',
+        pubspec: Pubspec.parse('name: ui\n'),
+      );
+
+      expect(
+        rippleEnvironment(rootPath: '/repo', package: package).containsKey(
+          ripplePackageVersionEnvVar,
+        ),
+        isFalse,
       );
     });
   });
@@ -409,6 +445,7 @@ void main() {
       rippleRootPathEnvVar: '/repo',
       ripplePackagePathEnvVar: '/repo/packages/ui',
       ripplePackageNameEnvVar: 'ui',
+      ripplePackageVersionEnvVar: '1.2.3',
     };
 
     test('substitutes \$VAR and \${VAR} forms', () {
@@ -419,6 +456,7 @@ void main() {
             r'$RIPPLE_PACKAGE_NAME',
             r'${RIPPLE_PACKAGE_PATH}',
             r'root=$RIPPLE_ROOT_PATH',
+            r'$RIPPLE_PACKAGE_VERSION',
           ],
           vars: vars,
         ),
@@ -427,6 +465,7 @@ void main() {
           'ui',
           '/repo/packages/ui',
           'root=/repo',
+          '1.2.3',
         ],
       );
     });

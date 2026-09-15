@@ -190,8 +190,7 @@ class RunCommand extends RippleCommand {
       // run: scripts must not observe package-scoped RIPPLE_* vars, even when
       // those are present in the parent environment.
       final environment = Map<String, String>.from(Platform.environment)
-        ..remove(ripplePackagePathEnvVar)
-        ..remove(ripplePackageNameEnvVar)
+        ..removeWhere((key, _) => key.startsWith('RIPPLE_PACKAGE_'))
         ..addAll(vars);
       announceRootScopeStart();
       for (final commandString in script.commands) {

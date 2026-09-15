@@ -57,19 +57,26 @@ const ripplePackagePathEnvVar = 'RIPPLE_PACKAGE_PATH';
 /// Environment variable for the current package's pubspec name.
 const ripplePackageNameEnvVar = 'RIPPLE_PACKAGE_NAME';
 
+/// Environment variable for the current package's pubspec version.
+const ripplePackageVersionEnvVar = 'RIPPLE_PACKAGE_VERSION';
+
 /// Builds the `RIPPLE_*` environment map for a package-scoped invocation.
 ///
 /// Always includes [rippleRootPathEnvVar]. When [package] is non-null, also
-/// sets [ripplePackagePathEnvVar] and [ripplePackageNameEnvVar].
+/// sets [ripplePackagePathEnvVar] and [ripplePackageNameEnvVar]. Sets
+/// [ripplePackageVersionEnvVar] only when that package's pubspec declares a
+/// version; the variable is omitted when the version is absent.
 Map<String, String> rippleEnvironment({
   required String rootPath,
   RipplePackage? package,
 }) {
+  final version = package?.pubspec?.version;
   return {
     rippleRootPathEnvVar: rootPath,
     if (package != null) ...{
       ripplePackagePathEnvVar: package.path,
       ripplePackageNameEnvVar: package.name,
+      if (version != null) ripplePackageVersionEnvVar: '$version',
     },
   };
 }
