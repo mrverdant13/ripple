@@ -307,12 +307,15 @@ void main() {
     test(
       'exec: script omits RIPPLE_PACKAGE_VERSION when the pubspec has none',
       () async {
-        final result = await runRipple([
-          'run',
-          'pkg.version.absent',
-          '--match',
-          'core',
-        ]);
+        final result = await runRipple(
+          [
+            'run',
+            'pkg.version.absent',
+            '--match',
+            'core',
+          ],
+          environment: const {ripplePackageVersionEnvVar: '9.9.9'},
+        );
 
         expect(result.exitCode, 0, reason: result.stderr as String);
       },

@@ -81,6 +81,22 @@ Map<String, String> rippleEnvironment({
   };
 }
 
+/// Merges [vars] onto [parent] (default: [Platform.environment]) for a child.
+///
+/// Parent keys that start with `RIPPLE_PACKAGE_` and are not present in [vars]
+/// are removed so omit-if-absent variables (such as
+/// [ripplePackageVersionEnvVar]) cannot leak from a parent Ripple invocation.
+Map<String, String> rippleChildEnvironment(
+  Map<String, String> vars, {
+  Map<String, String>? parent,
+}) {
+  return Map<String, String>.from(parent ?? Platform.environment)
+    ..removeWhere(
+      (key, _) => key.startsWith('RIPPLE_PACKAGE_') && !vars.containsKey(key),
+    )
+    ..addAll(vars);
+}
+
 /// ANSI helpers for package-scope banners (TTY + color-enabled only).
 const _ansiReset = '\x1B[0m';
 const _ansiBold = '\x1B[1m';

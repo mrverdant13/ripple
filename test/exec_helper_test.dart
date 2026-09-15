@@ -68,6 +68,62 @@ void main() {
     });
   });
 
+  group('rippleChildEnvironment', () {
+    test('strips parent RIPPLE_PACKAGE_VERSION when vars omit it', () {
+      expect(
+        rippleChildEnvironment(
+          const {
+            rippleRootPathEnvVar: '/repo',
+            ripplePackagePathEnvVar: '/pkg',
+            ripplePackageNameEnvVar: 'core',
+          },
+          parent: const {
+            'PATH': '/bin',
+            ripplePackageVersionEnvVar: '9.9.9',
+            ripplePackageNameEnvVar: 'leaked',
+          },
+        ),
+        {
+          'PATH': '/bin',
+          rippleRootPathEnvVar: '/repo',
+          ripplePackagePathEnvVar: '/pkg',
+          ripplePackageNameEnvVar: 'core',
+        },
+      );
+    });
+
+    test('keeps RIPPLE_PACKAGE_VERSION from vars over parent', () {
+      expect(
+        rippleChildEnvironment(
+          const {
+            rippleRootPathEnvVar: '/repo',
+            ripplePackageVersionEnvVar: '1.2.3',
+          },
+          parent: const {ripplePackageVersionEnvVar: '9.9.9'},
+        )[ripplePackageVersionEnvVar],
+        '1.2.3',
+      );
+    });
+
+    test('strips all parent RIPPLE_PACKAGE_* when vars are root-only', () {
+      expect(
+        rippleChildEnvironment(
+          const {rippleRootPathEnvVar: '/repo'},
+          parent: const {
+            'HOME': '/home',
+            ripplePackagePathEnvVar: '/leaked',
+            ripplePackageNameEnvVar: 'leaked',
+            ripplePackageVersionEnvVar: '9.9.9',
+          },
+        ),
+        {
+          'HOME': '/home',
+          rippleRootPathEnvVar: '/repo',
+        },
+      );
+    });
+  });
+
   group('TerminalLineState', () {
     test('observeBytes treats trailing LF or CR as line start', () {
       final state = TerminalLineState();

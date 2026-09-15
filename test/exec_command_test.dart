@@ -226,13 +226,16 @@ void main() {
 
     test('omits RIPPLE_PACKAGE_VERSION when the pubspec has no version',
         () async {
-      final result = await runRipple([
-        'exec',
-        '--match',
-        'core',
-        '--',
-        ...probe(['env-absent', 'RIPPLE_PACKAGE_VERSION']),
-      ]);
+      final result = await runRipple(
+        [
+          'exec',
+          '--match',
+          'core',
+          '--',
+          ...probe(['env-absent', 'RIPPLE_PACKAGE_VERSION']),
+        ],
+        environment: const {ripplePackageVersionEnvVar: '9.9.9'},
+      );
 
       expect(result.exitCode, 0, reason: result.stderr as String);
     });

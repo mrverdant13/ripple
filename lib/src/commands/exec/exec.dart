@@ -188,7 +188,7 @@ class ExecCommand extends RippleCommand {
       final result = await _runPackageCommand(
         resolvedCommand,
         workingDirectory: package.path,
-        environment: vars,
+        environment: rippleChildEnvironment(vars),
       );
       announceCommandEnd(
         resolvedCommand,
@@ -224,6 +224,7 @@ class ExecCommand extends RippleCommand {
         command,
         workingDirectory: workingDirectory,
         environment: environment,
+        includeParentEnvironment: false,
       );
     } on ProcessException catch (error) {
       final executable = command.isEmpty ? '(empty)' : command.first;
