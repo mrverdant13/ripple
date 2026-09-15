@@ -18,6 +18,8 @@ void main(List<String> args) {
       _printEnv(args.skip(1).toList());
     case 'env-root-only':
       _printRootOnly();
+    case 'env-absent':
+      _assertEnvAbsent(args.skip(1).toList());
     case 'write':
       stdout.write(args.skip(1).join(' '));
     case 'echo':
@@ -66,8 +68,9 @@ void _printEnv(List<String> names) {
 }
 
 void _printRootOnly() {
-  if (Platform.environment.containsKey('RIPPLE_PACKAGE_PATH') ||
-      Platform.environment.containsKey('RIPPLE_PACKAGE_NAME')) {
+  if (Platform.environment.keys.any(
+    (key) => key.startsWith('RIPPLE_PACKAGE_'),
+  )) {
     exit(11);
   }
   final root = Platform.environment['RIPPLE_ROOT_PATH'];
@@ -75,6 +78,18 @@ void _printRootOnly() {
     exit(1);
   }
   stdout.writeln(root);
+}
+
+void _assertEnvAbsent(List<String> names) {
+  if (names.isEmpty) {
+    stderr.writeln('probe env-absent: missing NAME');
+    exit(64);
+  }
+  for (final name in names) {
+    if (Platform.environment.containsKey(name)) {
+      exit(1);
+    }
+  }
 }
 
 void _failIf(List<String> args) {

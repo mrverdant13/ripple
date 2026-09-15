@@ -9,6 +9,7 @@ void main() {
     rippleRootPathEnvVar: '/repo',
     ripplePackagePathEnvVar: '/repo/packages/ui',
     ripplePackageNameEnvVar: 'ui',
+    ripplePackageVersionEnvVar: '1.2.3',
   };
 
   List<String> expand(
@@ -284,6 +285,18 @@ void main() {
           },
         ),
         ['/repo/packages/ui/.fvm/flutter_sdk/bin/dart'],
+      );
+    });
+
+    test('substitutes RIPPLE_PACKAGE_VERSION inside replacement values', () {
+      expect(
+        expand(
+          const ['{{tag}}'],
+          replacements: const {
+            'tag': r'v$RIPPLE_PACKAGE_VERSION',
+          },
+        ),
+        ['v1.2.3'],
       );
     });
 
