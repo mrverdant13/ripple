@@ -192,8 +192,10 @@ Prioritize coverage for:
 - Per-command start/end stderr banners for `exec`, `exec:`, and `run:` (resolved
   argv after `$RIPPLE_*` substitution and `{{key}}` replacement expansion;
   stamped with package name or `(root)`; exit code on end; color only on TTY)
-- Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`, `RIPPLE_PACKAGE_NAME`)
-  in command arguments and in `replacements` values
+- Variable substitution (`RIPPLE_ROOT_PATH`, `RIPPLE_PACKAGE_PATH`,
+  `RIPPLE_PACKAGE_NAME`, `RIPPLE_PACKAGE_VERSION`) in command arguments and in
+  `replacements` values (`RIPPLE_PACKAGE_VERSION` omitted when the pubspec has
+  no `version:`; not injected for `run:`)
 - `replacements` map parse (empty key, blank value, unquoted `&&`, `RIPPLE_*`
   keys) and `{{key}}` expansion (`fvm dart` splice, unknown / empty `{{}}`,
   values expand `{{key}}`, cycles fail, spliced tokens not treated as keys,
