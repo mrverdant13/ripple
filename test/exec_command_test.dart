@@ -211,6 +211,7 @@ void main() {
           'RIPPLE_ROOT_PATH',
           'RIPPLE_PACKAGE_PATH',
           'RIPPLE_PACKAGE_NAME',
+          'RIPPLE_PACKAGE_VERSION',
         ]),
       ]);
 
@@ -219,7 +220,24 @@ void main() {
         p.normalize(fixtureRoot),
         p.normalize(p.join(fixtureRoot, 'packages', 'ui')),
         'ui',
+        '1.2.3',
       ]);
+    });
+
+    test('omits RIPPLE_PACKAGE_VERSION when the pubspec has no version',
+        () async {
+      final result = await runRipple(
+        [
+          'exec',
+          '--match',
+          'core',
+          '--',
+          ...probe(['env-absent', 'RIPPLE_PACKAGE_VERSION']),
+        ],
+        environment: const {ripplePackageVersionEnvVar: '9.9.9'},
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
     });
 
     test('substitutes RIPPLE_* placeholders in command args', () async {
@@ -233,6 +251,19 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(result.stdout, 'ui');
+    });
+
+    test('substitutes RIPPLE_PACKAGE_VERSION in command args', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['write', r'$RIPPLE_PACKAGE_VERSION']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, '1.2.3');
     });
 
     test('filters restrict which packages execute', () async {

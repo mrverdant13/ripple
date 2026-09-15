@@ -567,9 +567,11 @@ ripple run analyze.ci --match core --match ui --fail-fast
 Behavior depends on the script kind:
 
 - **`run:`** — runs once with cwd = the Ripple root (all list steps in order).
-  Only `RIPPLE_ROOT_PATH` is set. Package filters (`--group`, `--match`,
-  `--no-match`, `--dir-exists`, `--file-exists`, `--depends-on`, `--preset`,
-  `--changed`, and `RIPPLE_PACKAGES`) are rejected. Begin/end stderr root-scope banners use
+  Only `RIPPLE_ROOT_PATH` is set. Package-scoped `RIPPLE_PACKAGE_*` variables
+  are not injected (and are stripped if present in the parent environment).
+  Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
+  `--file-exists`, `--depends-on`, `--preset`, `--changed`, and
+  `RIPPLE_PACKAGES`) are rejected. Begin/end stderr root-scope banners use
   `(root)`; each step also gets command start/end banners stamped with
   `(root)`.
 - **`exec:`** — for each matching package, runs all list steps in that package
@@ -577,11 +579,11 @@ Behavior depends on the script kind:
   Script-declared seed `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
   `dependenciesFilters` expand the set (see
-  [Package selection](#package-selection)). Package path/name vars are set in
-  addition to `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners use
-  `name @ path` once per package; each step also gets its own command start/end
-  banners stamped with the package name. The package end banner reports that
-  package's exit code.
+  [Package selection](#package-selection)). Package path/name/version vars are
+  set in addition to `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners
+  use `name @ path` once per package; each step also gets its own command
+  start/end banners stamped with the package name. The package end banner
+  reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 
@@ -602,6 +604,7 @@ Child processes receive these variables in the environment (and as `$VAR` /
 | `RIPPLE_ROOT_PATH` | Absolute path to the Ripple root (directory containing `ripple.yaml`). Always set. |
 | `RIPPLE_PACKAGE_PATH` | Absolute path to the current package directory. Set for `exec` / `exec:` only. |
 | `RIPPLE_PACKAGE_NAME` | Package name from that package's `pubspec.yaml`. Set for `exec` / `exec:` only. |
+| `RIPPLE_PACKAGE_VERSION` | Package version from that package's `pubspec.yaml`. Set for `exec` / `exec:` only when `version:` is present; omitted when the pubspec has no version. |
 
 `RIPPLE_PACKAGES` (exact name allowlist selection filter) is read by Ripple
 itself; it is not injected into child processes beyond normal

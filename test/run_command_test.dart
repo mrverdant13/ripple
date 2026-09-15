@@ -98,6 +98,7 @@ void main() {
       final environment = Map<String, String>.from(Platform.environment)
         ..remove('RIPPLE_PACKAGE_PATH')
         ..remove('RIPPLE_PACKAGE_NAME')
+        ..remove('RIPPLE_PACKAGE_VERSION')
         ..remove('RIPPLE_PACKAGES');
       final result = await Process.run(
         Platform.resolvedExecutable,
@@ -126,6 +127,7 @@ void main() {
           environment: {
             'RIPPLE_PACKAGE_PATH': '/leaked/package',
             'RIPPLE_PACKAGE_NAME': 'leaked',
+            'RIPPLE_PACKAGE_VERSION': '9.9.9',
           },
         );
 
@@ -289,6 +291,36 @@ void main() {
       ]);
     });
 
+    test('exec: script injects RIPPLE_PACKAGE_VERSION from the pubspec',
+        () async {
+      final result = await runRipple([
+        'run',
+        'pkg.version',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['1.2.3']);
+    });
+
+    test(
+      'exec: script omits RIPPLE_PACKAGE_VERSION when the pubspec has none',
+      () async {
+        final result = await runRipple(
+          [
+            'run',
+            'pkg.version.absent',
+            '--match',
+            'core',
+          ],
+          environment: const {ripplePackageVersionEnvVar: '9.9.9'},
+        );
+
+        expect(result.exitCode, 0, reason: result.stderr as String);
+      },
+    );
+
     test('exec: script substitutes RIPPLE_* placeholders', () async {
       final result = await runRipple([
         'run',
@@ -299,6 +331,18 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(result.stdout, 'ui');
+    });
+
+    test('exec: script substitutes RIPPLE_PACKAGE_VERSION in argv', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.subst.version',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, '1.2.3');
     });
 
     test('exec: multi-step script runs all steps per package', () async {

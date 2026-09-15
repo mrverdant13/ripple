@@ -45,8 +45,14 @@ scripts:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_PACKAGE_NAME
   pkg.env:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_ROOT_PATH RIPPLE_PACKAGE_PATH RIPPLE_PACKAGE_NAME
+  pkg.version:
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_PACKAGE_VERSION
+  pkg.version.absent:
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env-absent RIPPLE_PACKAGE_VERSION
   pkg.subst:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart write $RIPPLE_PACKAGE_NAME
+  pkg.subst.version:
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart write $RIPPLE_PACKAGE_VERSION
   pkg.fail:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart fail-if RIPPLE_PACKAGE_NAME=core --exit 3 --print-env RIPPLE_PACKAGE_NAME
   pkg.steps:

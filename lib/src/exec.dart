@@ -57,21 +57,44 @@ const ripplePackagePathEnvVar = 'RIPPLE_PACKAGE_PATH';
 /// Environment variable for the current package's pubspec name.
 const ripplePackageNameEnvVar = 'RIPPLE_PACKAGE_NAME';
 
+/// Environment variable for the current package's pubspec version.
+const ripplePackageVersionEnvVar = 'RIPPLE_PACKAGE_VERSION';
+
 /// Builds the `RIPPLE_*` environment map for a package-scoped invocation.
 ///
 /// Always includes [rippleRootPathEnvVar]. When [package] is non-null, also
-/// sets [ripplePackagePathEnvVar] and [ripplePackageNameEnvVar].
+/// sets [ripplePackagePathEnvVar] and [ripplePackageNameEnvVar]. Sets
+/// [ripplePackageVersionEnvVar] only when that package's pubspec declares a
+/// version; the variable is omitted when the version is absent.
 Map<String, String> rippleEnvironment({
   required String rootPath,
   RipplePackage? package,
 }) {
+  final version = package?.pubspec?.version;
   return {
     rippleRootPathEnvVar: rootPath,
     if (package != null) ...{
       ripplePackagePathEnvVar: package.path,
       ripplePackageNameEnvVar: package.name,
+      if (version != null) ripplePackageVersionEnvVar: '$version',
     },
   };
+}
+
+/// Merges [vars] onto [parent] (default: [Platform.environment]) for a child.
+///
+/// Parent keys that start with `RIPPLE_PACKAGE_` and are not present in [vars]
+/// are removed so omit-if-absent variables (such as
+/// [ripplePackageVersionEnvVar]) cannot leak from a parent Ripple invocation.
+Map<String, String> rippleChildEnvironment(
+  Map<String, String> vars, {
+  Map<String, String>? parent,
+}) {
+  return Map<String, String>.from(parent ?? Platform.environment)
+    ..removeWhere(
+      (key, _) => key.startsWith('RIPPLE_PACKAGE_') && !vars.containsKey(key),
+    )
+    ..addAll(vars);
 }
 
 /// ANSI helpers for package-scope banners (TTY + color-enabled only).

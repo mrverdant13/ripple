@@ -1,4 +1,6 @@
 name: ui
+version: 1.2.3
+publish_to: none
 dependencies:
   core:
     path: ../core
