@@ -56,7 +56,8 @@ ripple/                         # repo root = package root
 │           ├── ripple_command_runner.dart  # CommandRunner
 │           ├── list/list.dart
 │           ├── exec/exec.dart
-│           └── run/run.dart
+│           ├── run/run.dart
+│           └── scripts/scripts.dart
 ├── test/
 │   └── fixtures/               # mini consumer trees for discovery/filter tests
 ├── e2e/
@@ -77,6 +78,7 @@ From the repo root (exercises local sources without a global install):
 ```bash
 dart run bin/ripple.dart
 dart run bin/ripple.dart list
+dart run bin/ripple.dart scripts
 dart run bin/ripple.dart exec -- dart analyze .
 dart run bin/ripple.dart run <script>
 ```
@@ -182,6 +184,9 @@ Prioritize coverage for:
   no expansion on bare `list` / `exec`)
 - Script kind XOR (`run` vs `exec`; reject both, neither, or `filters` /
   expansion keys on a `run:` script)
+- Optional script `description:` (non-empty single line; ignored by `run`)
+- `ripple scripts` (every script id, stable sort, `run` vs `exec` column,
+  optional description; unknown flags and extra args are usage errors)
 - Multi-step `run:` / `exec:` lists (sequential fail-fast; all steps per package)
 - Rejection of unquoted `&&` in string commands
 - Fail-fast on ad-hoc `exec` and `exec:` scripts

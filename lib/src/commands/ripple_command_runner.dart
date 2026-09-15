@@ -15,13 +15,15 @@ class RippleCommandRunner extends CommandRunner<void> {
           'Repo-agnostic runner for Dart package repos via ripple.yaml.\n'
               '\n'
               'Available commands:\n'
-              '  list   List packages matching include/exclude and filters\n'
-              '  exec   Run an ad-hoc command once per matching package\n'
-              '  run    Execute a named script from ripple.yaml',
+              '  list     List packages matching include/exclude and filters\n'
+              '  exec     Run an ad-hoc command once per matching package\n'
+              '  run      Execute a named script from ripple.yaml\n'
+              '  scripts  List named scripts from ripple.yaml',
         ) {
     addCommand(ListCommand());
     addCommand(ExecCommand());
     addCommand(RunCommand());
+    addCommand(ScriptsCommand());
     argParser.addFlag(
       versionFlagName,
       abbr: 'v',

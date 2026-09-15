@@ -253,6 +253,9 @@ final class GraphExpansionFilters {
 /// [commands] is one or more argv command strings run sequentially (fail-fast
 /// between steps). A bare string in YAML is normalized to a single-element
 /// list; a YAML list is multiple steps.
+///
+/// Optional [description] is documentation only; it is not used when running
+/// the script.
 class RippleScript {
   /// Creates a validated script entry.
   const RippleScript({
@@ -262,6 +265,7 @@ class RippleScript {
     this.filters,
     this.dependentsFilters,
     this.dependenciesFilters,
+    this.description,
   }) : assert(
           kind == ScriptKind.exec ||
               (filters == null &&
@@ -275,6 +279,9 @@ class RippleScript {
 
   /// Whether this script runs once at the root or once per package.
   final ScriptKind kind;
+
+  /// Optional one-line summary from `description:` (ignored by `ripple run`).
+  final String? description;
 
   /// Command strings from `run:` or `exec:` (string or YAML list).
   ///
@@ -1116,11 +1123,13 @@ RippleScript _scriptFromValue(
     key: kindKey,
     scriptName: name,
   );
+  final description = _scriptDescriptionFromValue(map, name);
 
   return RippleScript(
     name: name,
     kind: hasRun ? ScriptKind.run : ScriptKind.exec,
     commands: commands,
+    description: description,
     filters: hasExec
         ? _filtersFromValue(
             filtersValue,
@@ -1203,6 +1212,43 @@ GraphExpansionFilters? _graphExpansionFromValue(
       className: 'RippleScript',
     ),
   );
+}
+
+/// Parses optional `description:` as a non-empty single-line string.
+String? _scriptDescriptionFromValue(
+  Map<dynamic, dynamic> map,
+  String scriptName,
+) {
+  final value = map['description'];
+  if (value == null) {
+    return null;
+  }
+  if (value is! String) {
+    throw CheckedFromJsonException(
+      map,
+      'description',
+      'RippleScript',
+      'Script "$scriptName" `description:` must be a string',
+    );
+  }
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    throw CheckedFromJsonException(
+      map,
+      'description',
+      'RippleScript',
+      'Script "$scriptName" `description:` must be a non-empty string',
+    );
+  }
+  if (RegExp(r'[\r\n]').hasMatch(trimmed)) {
+    throw CheckedFromJsonException(
+      map,
+      'description',
+      'RippleScript',
+      'Script "$scriptName" `description:` must be a single line',
+    );
+  }
+  return trimmed;
 }
 
 /// Parses a `run:` / `exec:` value as a non-empty string or list of strings.

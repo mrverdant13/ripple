@@ -51,10 +51,12 @@ scripts:
       expect(format.kind, ScriptKind.run);
       expect(format.commands, ['dart format --set-exit-if-changed .']);
       expect(format.filters, isNull);
+      expect(format.description, isNull);
 
       final analyze = config.scripts['analyze.ci']!;
       expect(analyze.kind, ScriptKind.exec);
       expect(analyze.commands, ['dart analyze .']);
+      expect(analyze.description, isNull);
       expect(
         analyze.filters,
         const FilterAnd([
@@ -65,6 +67,103 @@ scripts:
           FilterMatch(['*_api', 'core']),
           FilterNoMatch(['*_test']),
         ]),
+      );
+    });
+
+    test('parses optional script description', () {
+      const yaml = '''
+scripts:
+  format.ci:
+    description: Format the repo
+    run: dart format --set-exit-if-changed .
+  analyze.ci:
+    exec: dart analyze .
+    description: Analyze each package
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(config.scripts['format.ci']!.description, 'Format the repo');
+      expect(config.scripts['analyze.ci']!.description, 'Analyze each package');
+    });
+
+    test('trims script description whitespace', () {
+      const yaml = '''
+scripts:
+  format.ci:
+    description: "  Format the repo  "
+    run: dart format .
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+      expect(config.scripts['format.ci']!.description, 'Format the repo');
+    });
+
+    test('rejects a non-string script description', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    description: [Format the repo]
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('description'),
+              contains('must be a string'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects an empty script description', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    description: "   "
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must be a non-empty string'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a multiline script description', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    description: |
+      Format the repo
+      on two lines
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must be a single line'),
+          ),
+        ),
       );
     });
 

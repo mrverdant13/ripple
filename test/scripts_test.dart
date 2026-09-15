@@ -59,6 +59,59 @@ void main() {
     });
   });
 
+  group('sortedScripts', () {
+    test('returns scripts ordered by id', () {
+      const config = RippleConfig(
+        rootPath: '/repo',
+        scripts: {
+          'test': RippleScript(
+            name: 'test',
+            kind: ScriptKind.exec,
+            commands: ['dart test'],
+          ),
+          'format.ci': RippleScript(
+            name: 'format.ci',
+            kind: ScriptKind.run,
+            commands: ['dart format .'],
+          ),
+        },
+      );
+
+      expect(
+        sortedScripts(config).map((script) => script.name),
+        ['format.ci', 'test'],
+      );
+    });
+
+    test('returns an empty list when no scripts are defined', () {
+      expect(sortedScripts(const RippleConfig(rootPath: '/repo')), isEmpty);
+    });
+  });
+
+  group('formatScriptListLine', () {
+    test('prints id and kind', () {
+      const script = RippleScript(
+        name: 'format.ci',
+        kind: ScriptKind.run,
+        commands: ['dart format .'],
+      );
+      expect(formatScriptListLine(script), 'format.ci  run');
+    });
+
+    test('appends description when present', () {
+      const script = RippleScript(
+        name: 'analyze.ci',
+        kind: ScriptKind.exec,
+        commands: ['dart analyze .'],
+        description: 'Analyze each package',
+      );
+      expect(
+        formatScriptListLine(script),
+        'analyze.ci  exec  Analyze each package',
+      );
+    });
+  });
+
   group('parseScriptCommand', () {
     test('splits on whitespace', () {
       expect(
