@@ -87,6 +87,12 @@ ripple --version
    ripple run analyze
    ```
 
+5. **List named scripts** from `ripple.yaml`:
+
+   ```bash
+   ripple scripts
+   ```
+
 Ripple walks upward from the current working directory until it finds
 `ripple.yaml`; that file's directory is the Ripple root.
 
@@ -331,6 +337,9 @@ Each script must declare **exactly one** of `run:` or `exec:` (XOR):
   Optional `dependentsFilters` / `dependenciesFilters` expand the selection
   beyond seed packages (see [Package selection](#package-selection)).
 
+Optional `description:` is a one-line summary shown by
+[`ripple scripts`](#ripple-scripts). It is ignored by `ripple run`.
+
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
 exit. For `exec:` lists, all steps run for a package before the next package
@@ -342,6 +351,7 @@ instead.
 ```yaml
 scripts:
   format.ci:
+    description: Format the repository
     run: dart format --set-exit-if-changed .
 
   check.ci:
@@ -593,6 +603,26 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Unknown script names fail with a clear error that lists available scripts.
+
+### `ripple scripts`
+
+Print every key under `scripts:` (including dotted ids such as `format.ci`).
+Output is one line per script, sorted by id. Each line is the script id, the
+kind (`run` or `exec`), and the optional `description:` when present:
+
+```text
+analyze.ci  run
+format.ci  run  Format the repository
+test  exec
+```
+
+```bash
+ripple scripts
+```
+
+The command takes no flags other than `--help`. Unknown options and extra
+arguments are usage errors. Running outside any `ripple.yaml` ancestry fails
+with the same config-not-found error as other commands.
 
 ## Environment variables
 
