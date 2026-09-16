@@ -689,4 +689,139 @@ void main() {
       expect(result.exitCode, 7);
     });
   });
+
+  group('resolveConcurrency', () {
+    test('defaults to 1 when CLI and script are absent', () {
+      expect(resolveConcurrency(), defaultPackageConcurrency);
+      expect(resolveConcurrency(), 1);
+    });
+
+    test('prefers CLI over script concurrency', () {
+      expect(
+        resolveConcurrency(cliConcurrency: 4, scriptConcurrency: 2),
+        4,
+      );
+      expect(resolveConcurrency(scriptConcurrency: 3), 3);
+    });
+
+    test('rejects values less than 1', () {
+      expect(
+        () => resolveConcurrency(cliConcurrency: 0),
+        throwsArgumentError,
+      );
+      expect(
+        () => resolveConcurrency(scriptConcurrency: -1),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('runWithBoundedConcurrency', () {
+    test('with concurrency 1 runs items in list order', () async {
+      final started = <String>[];
+      final exit = await runWithBoundedConcurrency<String>(
+        items: const ['a', 'b', 'c'],
+        concurrency: 1,
+        failFast: false,
+        run: (item) async {
+          started.add(item);
+          await Future<void>.delayed(Duration.zero);
+          return 0;
+        },
+      );
+
+      expect(exit, 0);
+      expect(started, ['a', 'b', 'c']);
+    });
+
+    test('caps in-flight work at concurrency', () async {
+      var inFlight = 0;
+      var maxInFlight = 0;
+      final exit = await runWithBoundedConcurrency<int>(
+        items: List<int>.generate(6, (i) => i),
+        concurrency: 2,
+        failFast: false,
+        run: (item) async {
+          inFlight++;
+          if (inFlight > maxInFlight) {
+            maxInFlight = inFlight;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          inFlight--;
+          return 0;
+        },
+      );
+
+      expect(exit, 0);
+      expect(maxInFlight, 2);
+    });
+
+    test('without fail-fast runs every item and returns earliest failure',
+        () async {
+      final ran = <int>[];
+      final exit = await runWithBoundedConcurrency<int>(
+        items: const [0, 1, 2, 3],
+        concurrency: 2,
+        failFast: false,
+        run: (item) async {
+          ran.add(item);
+          await Future<void>.delayed(
+            Duration(milliseconds: item == 0 ? 40 : 5),
+          );
+          return item == 0 || item == 2 ? (item + 10) : 0;
+        },
+      );
+
+      expect(ran.toSet(), {0, 1, 2, 3});
+      // Item 0 fails with 10 and is earliest in list order even if item 2
+      // completes first.
+      expect(exit, 10);
+    });
+
+    test('fail-fast does not start further items after a failure', () async {
+      final started = <int>[];
+      final exit = await runWithBoundedConcurrency<int>(
+        items: const [0, 1, 2, 3],
+        concurrency: 2,
+        failFast: true,
+        run: (item) async {
+          started.add(item);
+          if (item == 0) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+            return 9;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+          return 0;
+        },
+      );
+
+      expect(exit, 9);
+      expect(started, isNot(contains(3)));
+      expect(started.length, lessThan(4));
+    });
+
+    test('rejects concurrency less than 1', () async {
+      expect(
+        () => runWithBoundedConcurrency<int>(
+          items: const [1],
+          concurrency: 0,
+          failFast: false,
+          run: (_) async => 0,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('returns 0 for an empty list', () async {
+      expect(
+        await runWithBoundedConcurrency<int>(
+          items: const [],
+          concurrency: 4,
+          failFast: false,
+          run: (_) async => 1,
+        ),
+        0,
+      );
+    });
+  });
 }

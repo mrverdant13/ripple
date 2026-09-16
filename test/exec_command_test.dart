@@ -395,6 +395,7 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
       expect(help, contains('--quiet'));
+      expect(help, contains('--concurrency'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -479,6 +480,166 @@ void main() {
       expect(stdoutLines(result), ['core']);
       expect(result.stdout, isNot(contains('ui')));
       expect(result.stderr, isNot(contains('ui @ packages/ui')));
+    });
+
+    test('omitted --concurrency keeps relativePath start order', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('--concurrency 1 keeps relativePath start order', () async {
+      final result = await runRipple([
+        'exec',
+        '--concurrency',
+        '1',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('--concurrency 2 overlaps package work', () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_exec_overlap_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+      final logFile = File(p.join(temp.path, 'started.log'));
+
+      Future<int> runWithConcurrency(int concurrency) async {
+        for (final name in ['core', 'ui']) {
+          final stamp = File('${logFile.path}.$name');
+          if (stamp.existsSync()) {
+            stamp.deleteSync();
+          }
+        }
+        final sw = Stopwatch()..start();
+        final result = await runRipple([
+          'exec',
+          '--concurrency',
+          '$concurrency',
+          '--quiet',
+          '--match',
+          'core',
+          '--match',
+          'ui',
+          '--',
+          ...probe(['sleep-ms-append', logFile.path, '300']),
+        ]);
+        sw.stop();
+        expect(result.exitCode, 0, reason: result.stderr as String);
+        expect(File('${logFile.path}.core').existsSync(), isTrue);
+        expect(File('${logFile.path}.ui').existsSync(), isTrue);
+        return sw.elapsedMilliseconds;
+      }
+
+      final sequentialMs = await runWithConcurrency(1);
+      final parallelMs = await runWithConcurrency(2);
+      // Parallel should save roughly one sleep interval after process overhead.
+      expect(parallelMs, lessThan(sequentialMs - 150));
+    });
+
+    test('without --fail-fast every package still runs under concurrency',
+        () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_exec_all_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+      final logPrefix = p.join(temp.path, 'started');
+
+      final result = await runRipple([
+        'exec',
+        '--concurrency',
+        '2',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe([
+          'stamp-and-fail-if',
+          logPrefix,
+          'RIPPLE_PACKAGE_NAME=core',
+          '--exit',
+          '3',
+        ]),
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(File('$logPrefix.core').existsSync(), isTrue);
+      expect(File('$logPrefix.ui').existsSync(), isTrue);
+    });
+
+    test('--fail-fast with concurrency does not start later packages',
+        () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_exec_conc_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+      final logPrefix = p.join(temp.path, 'started');
+
+      final result = await runRipple([
+        'exec',
+        '--concurrency',
+        '1',
+        '--fail-fast',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe([
+          'stamp-and-fail-if',
+          logPrefix,
+          'RIPPLE_PACKAGE_NAME=core',
+          '--exit',
+          '3',
+        ]),
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(File('$logPrefix.core').existsSync(), isTrue);
+      expect(File('$logPrefix.ui').existsSync(), isFalse);
+    });
+
+    test('--concurrency less than 1 is a usage error', () async {
+      final result = await runRipple([
+        'exec',
+        '--concurrency',
+        '0',
+        '--',
+        ...probe(['echo', 'ok']),
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('at least 1'));
     });
   });
 }

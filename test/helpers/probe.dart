@@ -5,7 +5,7 @@ library;
 
 import 'dart:io';
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   if (args.isEmpty) {
     stderr.writeln('usage: probe <command> ...');
     exit(64);
@@ -47,6 +47,50 @@ void main(List<String> args) {
         exit(64);
       }
       File(args[1]).writeAsStringSync(args[2]);
+    case 'sleep-ms':
+      if (args.length < 2) {
+        stderr.writeln('probe sleep-ms: missing milliseconds');
+        exit(64);
+      }
+      final ms = int.tryParse(args[1]);
+      if (ms == null || ms < 0) {
+        stderr.writeln('probe sleep-ms: invalid milliseconds');
+        exit(64);
+      }
+      await Future<void>.delayed(Duration(milliseconds: ms));
+      final name = Platform.environment['RIPPLE_PACKAGE_NAME'];
+      if (name != null) {
+        stdout.writeln(name);
+      }
+    case 'sleep-ms-append':
+      if (args.length < 3) {
+        stderr.writeln('probe sleep-ms-append: missing PATH or milliseconds');
+        exit(64);
+      }
+      final appendPath = args[1];
+      final sleepMs = int.tryParse(args[2]);
+      if (sleepMs == null || sleepMs < 0) {
+        stderr.writeln('probe sleep-ms-append: invalid milliseconds');
+        exit(64);
+      }
+      await Future<void>.delayed(Duration(milliseconds: sleepMs));
+      final packageName = Platform.environment['RIPPLE_PACKAGE_NAME'];
+      if (packageName == null) {
+        exit(1);
+      }
+      // Per-package stamp file avoids concurrent append interleaving.
+      File('$appendPath.$packageName').writeAsStringSync('ok\n');
+    case 'append-file':
+      if (args.length < 3) {
+        stderr.writeln('probe append-file: missing PATH or TEXT');
+        exit(64);
+      }
+      File(args[1]).writeAsStringSync(
+        '${args.skip(2).join(' ')}\n',
+        mode: FileMode.append,
+      );
+    case 'stamp-and-fail-if':
+      _stampAndFailIf(args.skip(1).toList());
     default:
       stderr.writeln('probe: unknown command "${args.first}"');
       exit(64);
@@ -122,6 +166,40 @@ void _failIf(List<String> args) {
     }
     stdout.writeln(value);
   }
+  if (Platform.environment[name] == expected) {
+    exit(exitCode);
+  }
+}
+
+/// Appends nothing; writes `RIPPLE_PACKAGE_NAME` as a sibling stamp file, then
+/// fails when NAME=value matches.
+///
+/// [path] is treated as a stamp directory prefix: creates `$path.$packageName`
+/// so concurrent packages do not interleave writes.
+void _stampAndFailIf(List<String> args) {
+  if (args.length < 2 || !args[1].contains('=')) {
+    stderr.writeln('probe stamp-and-fail-if: expected PATH NAME=value');
+    exit(64);
+  }
+  final path = args[0];
+  final eq = args[1].indexOf('=');
+  final name = args[1].substring(0, eq);
+  final expected = args[1].substring(eq + 1);
+  var exitCode = 1;
+  for (var i = 2; i < args.length; i++) {
+    final arg = args[i];
+    if (arg == '--exit' && i + 1 < args.length) {
+      exitCode = int.parse(args[++i]);
+      continue;
+    }
+    stderr.writeln('probe stamp-and-fail-if: unexpected $arg');
+    exit(64);
+  }
+  final packageName = Platform.environment['RIPPLE_PACKAGE_NAME'];
+  if (packageName == null) {
+    exit(1);
+  }
+  File('$path.$packageName').writeAsStringSync('ok\n');
   if (Platform.environment[name] == expected) {
     exit(exitCode);
   }

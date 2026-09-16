@@ -93,6 +93,9 @@ scripts:
   pkg.quiet:
     quiet: true
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart fail-if RIPPLE_PACKAGE_NAME=core --exit 3 --print-env RIPPLE_PACKAGE_NAME
+  pkg.concurrency:
+    concurrency: 2
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart sleep-ms 300
   root.quiet:
     quiet: true
     run: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart echo ok

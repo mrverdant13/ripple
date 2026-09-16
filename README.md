@@ -345,10 +345,17 @@ packages (`exec:`) or successful root steps (`run:`). Failed packages or steps
 still print banners and output. CLI `--quiet` enables the same behavior and
 wins when both are set.
 
+Optional `concurrency: <n>` on `exec:` scripts bounds how many packages run at
+once (default **1**, sequential by relative path). `n` must be at least 1.
+Invalid on `run:` scripts. CLI `--concurrency` enables the same behavior and
+wins when both are set.
+
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
-exit. For `exec:` lists, all steps run for a package before the next package
-(unless `--fail-fast` stops package iteration). Commands are not run through a
+exit. For `exec:` lists, all steps run for a package before that package's work
+is complete (unless `--fail-fast` stops starting further packages). With
+`--concurrency` greater than 1, multiple packages may run at the same time.
+Commands are not run through a
 shell — use `sh -c '…'` inside a step when you need pipes, redirects, or other
 shell features. Unquoted `&&` in a string command is rejected; use a YAML list
 instead.
@@ -367,6 +374,7 @@ scripts:
       - dart test
 
   analyze.ci:
+    concurrency: 4
     exec: dart analyze --fatal-infos --fatal-warnings .
     filters:
       - dirExists: [lib]
@@ -524,8 +532,10 @@ outside any `ripple.yaml` ancestry fails with a config-not-found error.
 
 ### `ripple exec`
 
-Run an ad-hoc command **once per matching package**, sequentially, with cwd set
-to each package directory. Pass the executable and its arguments after `--`.
+Run an ad-hoc command **once per matching package**, with cwd set to each
+package directory. Pass the executable and its arguments after `--`. Default
+concurrency is **1** (sequential by relative path). Use `--concurrency <n>` to
+run up to `n` packages at once (`n` must be at least 1).
 
 Each package is wrapped in begin/end stderr banners using that package's
 pubspec name and relative path (`name @ path`). Inside that block, Ripple also
@@ -550,7 +560,8 @@ inserts a newline before the next banner so markers stay on their own line.
 With `--quiet` (or script `quiet: true`), successful packages produce no banners
 and no child stdout/stderr. A failing package still prints its banners and
 captured output; later packages stay silent when they succeed. Combined with
-`--fail-fast`, packages after the first failure are not started.
+`--fail-fast`, packages after the first failure are not started (in-flight
+packages under `--concurrency` may still finish).
 
 ```bash
 ripple exec -- dart analyze .
@@ -558,6 +569,7 @@ ripple exec -- '{{dart}}' analyze .
 ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ripple exec --quiet -- dart analyze --fatal-infos --fatal-warnings .
+ripple exec --concurrency 4 -- dart analyze --fatal-infos --fatal-warnings .
 ```
 
 Quoting each `{{key}}` token is required in PowerShell and optional in
@@ -567,12 +579,14 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 
 | Flag | Description |
 | --- | --- |
-| `--fail-fast` | Stop after the first package whose command exits non-zero. |
+| `--fail-fast` | Stop starting packages after the first non-zero exit. In-flight packages may still finish when `--concurrency` is greater than 1. |
 | `--quiet` | Omit banners and child stdout/stderr for packages that exit 0. Failed packages still print banners and output. |
+| `--concurrency` | Max packages to run at once (default: `1`). Must be at least 1. |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Without `--fail-fast`, every selected package still runs; the overall exit code
-is the first non-zero package exit (or `0` when all succeed).
+is the first non-zero package exit in relative-path order (or `0` when all
+succeed).
 
 Missing `--` / an empty command fails with a usage error.
 
@@ -586,6 +600,7 @@ ripple run format.ci
 ripple run analyze.ci --group libs
 ripple run analyze.ci --match core --match ui --fail-fast
 ripple run check.ci --quiet
+ripple run analyze.ci --concurrency 4
 ```
 
 Behavior depends on the script kind:
@@ -595,26 +610,29 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--depends-on`, `--preset`, `--changed`, and
-  `RIPPLE_PACKAGES`) are rejected. Begin/end stderr root-scope banners use
+  `RIPPLE_PACKAGES`) are rejected. `--concurrency` is also rejected (a `run:`
+  script has a single root cwd). Begin/end stderr root-scope banners use
   `(root)`; each step also gets command start/end banners stamped with
   `(root)`.
 - **`exec:`** — for each matching package, runs all list steps in that package
-  (same sequential / fail-fast model as [`ripple exec`](#ripple-exec)).
+  (same fail-fast / concurrency model as [`ripple exec`](#ripple-exec)).
   Script-declared seed `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
   `dependenciesFilters` expand the set (see
   [Package selection](#package-selection)). Package path/name/version vars are
-  set in addition to `RIPPLE_ROOT_PATH`. Begin/end stderr package-scope banners
-  use `name @ path` once per package; each step also gets its own command
-  start/end banners stamped with the package name. The package end banner
-  reports that package's exit code.
+  set in addition to `RIPPLE_ROOT_PATH`. Script `concurrency:` sets the default
+  package parallelism; CLI `--concurrency` overrides it. Begin/end stderr
+  package-scope banners use `name @ path` once per package; each step also gets
+  its own command start/end banners stamped with the package name. The package
+  end banner reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 
 | Flag | Description |
 | --- | --- |
-| `--fail-fast` | For `exec:` scripts, stop after the first package whose command exits non-zero. |
+| `--fail-fast` | For `exec:` scripts, stop starting packages after the first non-zero exit. In-flight packages may still finish when `--concurrency` is greater than 1. |
 | `--quiet` | Omit banners and child stdout/stderr for successful packages (`exec:`) or successful root steps (`run:`). Failed packages or steps still print banners and output. Overrides script `quiet:` when both are set. |
+| `--concurrency` | For `exec:` scripts, max packages to run at once (default: `1`, or script `concurrency:`). Must be at least 1. Rejected for `run:` scripts. Overrides script `concurrency:` when both are set. |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Unknown script names fail with a clear error that lists available scripts.

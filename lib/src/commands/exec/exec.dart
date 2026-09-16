@@ -27,6 +27,12 @@ class ExecCommand extends RippleCommand {
         negatable: false,
       )
       ..addOption(
+        concurrencyOptionName,
+        help: 'Max packages to run at once (default: 1, sequential by '
+            'relative path). Must be at least 1.',
+        valueHelp: 'n',
+      )
+      ..addOption(
         groupOptionName,
         help: 'Only packages that belong to this named group from '
             'packages.groups.',
@@ -89,6 +95,9 @@ class ExecCommand extends RippleCommand {
   /// Flag name for `--quiet`.
   static const quietFlagName = 'quiet';
 
+  /// Option name for `--concurrency`.
+  static const concurrencyOptionName = 'concurrency';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -121,8 +130,8 @@ class ExecCommand extends RippleCommand {
 
   @override
   String get invocation =>
-      '${runner.executableName} $name [filters…] [--fail-fast] [--quiet] -- '
-      '<command…>';
+      '${runner.executableName} $name [filters…] [--fail-fast] [--quiet] '
+      '[--concurrency <n>] -- <command…>';
 
   @override
   Future<void> run() async {
@@ -178,78 +187,92 @@ class ExecCommand extends RippleCommand {
 
     final failFast = argResults!.flag(failFastFlagName);
     final quiet = resolveQuietMode(cliQuiet: argResults!.flag(quietFlagName));
-    var firstFailure = 0;
+    final concurrency = _resolveCliConcurrency();
+    final forwardStdin = concurrency == 1;
 
-    for (final package in filtered) {
-      final vars = rippleEnvironment(
-        rootPath: config.rootPath,
-        package: package,
-      );
-      final resolvedCommand = resolveCommandReplacements(
-        command,
-        replacements: resolveReplacements(
-          config: config,
+    final firstFailure = await runWithBoundedConcurrency<RipplePackage>(
+      items: filtered,
+      concurrency: concurrency,
+      failFast: failFast,
+      run: (package) async {
+        final vars = rippleEnvironment(
+          rootPath: config.rootPath,
           package: package,
-          workspacePackages: packages,
-        ),
-        vars: vars,
-      );
+        );
+        final resolvedCommand = resolveCommandReplacements(
+          command,
+          replacements: resolveReplacements(
+            config: config,
+            package: package,
+            workspacePackages: packages,
+          ),
+          vars: vars,
+        );
 
-      if (quiet) {
+        if (quiet) {
+          final result = await _runPackageCommand(
+            resolvedCommand,
+            workingDirectory: package.path,
+            environment: rippleChildEnvironment(vars),
+            inheritStdio: false,
+          );
+          if (result.exitCode != 0) {
+            announcePackageScopeStart(package);
+            announceCommandStart(resolvedCommand, scopeLabel: package.name);
+            writeCapturedChildOutput(
+              capturedStdout: result.stdout,
+              capturedStderr: result.stderr,
+            );
+            announceCommandEnd(
+              resolvedCommand,
+              scopeLabel: package.name,
+              exitCode: result.exitCode,
+            );
+            announcePackageScopeEnd(package, exitCode: result.exitCode);
+          }
+          return result.exitCode;
+        }
+
+        announcePackageScopeStart(package);
+        announceCommandStart(resolvedCommand, scopeLabel: package.name);
         final result = await _runPackageCommand(
           resolvedCommand,
           workingDirectory: package.path,
           environment: rippleChildEnvironment(vars),
-          inheritStdio: false,
+          forwardStdin: forwardStdin,
         );
-        if (result.exitCode != 0) {
-          announcePackageScopeStart(package);
-          announceCommandStart(resolvedCommand, scopeLabel: package.name);
-          writeCapturedChildOutput(
-            capturedStdout: result.stdout,
-            capturedStderr: result.stderr,
-          );
-          announceCommandEnd(
-            resolvedCommand,
-            scopeLabel: package.name,
-            exitCode: result.exitCode,
-          );
-          announcePackageScopeEnd(package, exitCode: result.exitCode);
-          firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
-          if (failFast) {
-            exitCode = result.exitCode;
-            return;
-          }
-        }
-        continue;
-      }
-
-      announcePackageScopeStart(package);
-      announceCommandStart(resolvedCommand, scopeLabel: package.name);
-      final result = await _runPackageCommand(
-        resolvedCommand,
-        workingDirectory: package.path,
-        environment: rippleChildEnvironment(vars),
-      );
-      announceCommandEnd(
-        resolvedCommand,
-        scopeLabel: package.name,
-        exitCode: result.exitCode,
-      );
-      announcePackageScopeEnd(package, exitCode: result.exitCode);
-
-      if (result.exitCode != 0) {
-        firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
-        if (failFast) {
-          exitCode = result.exitCode;
-          return;
-        }
-      }
-    }
+        announceCommandEnd(
+          resolvedCommand,
+          scopeLabel: package.name,
+          exitCode: result.exitCode,
+        );
+        announcePackageScopeEnd(package, exitCode: result.exitCode);
+        return result.exitCode;
+      },
+    );
 
     if (firstFailure != 0) {
       exitCode = firstFailure;
     }
+  }
+
+  int _resolveCliConcurrency() {
+    if (!argResults!.wasParsed(concurrencyOptionName)) {
+      return resolveConcurrency();
+    }
+    final raw = argResults!.option(concurrencyOptionName)!;
+    final parsed = int.tryParse(raw);
+    if (parsed == null) {
+      usageException(
+        'Invalid --$concurrencyOptionName: expected an integer, got "$raw"',
+      );
+    }
+    if (parsed < 1) {
+      usageException(
+        'Invalid --$concurrencyOptionName: must be at least 1',
+      );
+    }
+    return resolveConcurrency(cliConcurrency: parsed);
   }
 
   /// Exit code used when the child process cannot be started.
@@ -260,6 +283,7 @@ class ExecCommand extends RippleCommand {
     required String workingDirectory,
     required Map<String, String> environment,
     bool inheritStdio = true,
+    bool forwardStdin = true,
   }) async {
     try {
       return await runProcess(
@@ -267,6 +291,7 @@ class ExecCommand extends RippleCommand {
         workingDirectory: workingDirectory,
         environment: environment,
         inheritStdio: inheritStdio,
+        forwardStdin: forwardStdin,
         includeParentEnvironment: false,
       );
     } on ProcessException catch (error) {

@@ -532,6 +532,7 @@ void main() {
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
       expect(help, contains('--quiet'));
+      expect(help, contains('--concurrency'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -626,6 +627,59 @@ void main() {
         '[ripple] ■ (root)  (exit 7)',
       ]);
       expect(result.stdout, isNot(contains('ok')));
+    });
+
+    test('rejects --concurrency on run: scripts', () async {
+      final result = await runRipple([
+        'run',
+        '--concurrency',
+        '2',
+        'root.pwd',
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('does not accept'));
+      expect(result.stderr, contains('--concurrency'));
+    });
+
+    test('script concurrency: overlaps package work for exec:', () async {
+      Future<int> runWithConcurrencyFlag(String? concurrency) async {
+        final sw = Stopwatch()..start();
+        final result = await runRipple([
+          'run',
+          if (concurrency != null) ...['--concurrency', concurrency],
+          'pkg.concurrency',
+          '--quiet',
+          '--match',
+          'core',
+          '--match',
+          'ui',
+        ]);
+        sw.stop();
+        expect(result.exitCode, 0, reason: result.stderr as String);
+        return sw.elapsedMilliseconds;
+      }
+
+      // YAML concurrency: 2 vs forced CLI concurrency: 1.
+      final parallelMs = await runWithConcurrencyFlag(null);
+      final sequentialMs = await runWithConcurrencyFlag('1');
+      expect(parallelMs, lessThan(sequentialMs - 150));
+    });
+
+    test('CLI --concurrency overrides script concurrency: 2', () async {
+      // Covered by the timing comparison above (null uses YAML 2; '1' forces
+      // sequential). Keep an explicit override smoke check.
+      final result = await runRipple([
+        'run',
+        '--concurrency',
+        '1',
+        'pkg.concurrency',
+        '--quiet',
+        '--match',
+        'core',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
     });
   });
 }

@@ -260,6 +260,10 @@ final class GraphExpansionFilters {
 /// Optional [quiet] omits banners and child stdio for successful packages
 /// (`exec:`) or successful root steps (`run:`). CLI `--quiet` enables the same
 /// behavior and wins when both are set.
+///
+/// Optional [concurrency] bounds how many packages run at once for `exec:`
+/// scripts (`null` means absent → default 1 at run time). Invalid on `run:`
+/// scripts. CLI `--concurrency` wins when both are set.
 class RippleScript {
   /// Creates a validated script entry.
   const RippleScript({
@@ -271,12 +275,15 @@ class RippleScript {
     this.dependenciesFilters,
     this.description,
     this.quiet = false,
+    this.concurrency,
   }) : assert(
           kind == ScriptKind.exec ||
               (filters == null &&
                   dependentsFilters == null &&
-                  dependenciesFilters == null),
-          'run: scripts must not declare filters or expansion keys',
+                  dependenciesFilters == null &&
+                  concurrency == null),
+          'run: scripts must not declare filters, expansion keys, or '
+          'concurrency',
         );
 
   /// Key under `scripts:` (may contain dots, e.g. `format.ci`).
@@ -291,6 +298,12 @@ class RippleScript {
   /// When `true`, successful packages / root steps stay silent (see CLI
   /// `--quiet`). Failed packages / steps still print banners and child output.
   final bool quiet;
+
+  /// Max in-flight packages for `exec:` (see CLI `--concurrency`).
+  ///
+  /// `null` means the YAML key is absent (default 1 at run time). Only valid
+  /// for [ScriptKind.exec]; must be at least 1 when set.
+  final int? concurrency;
 
   /// Command strings from `run:` or `exec:` (string or YAML list).
   ///
@@ -1097,6 +1110,7 @@ RippleScript _scriptFromValue(
   final filtersValue = map['filters'];
   final hasDependentsFilters = map.containsKey('dependentsFilters');
   final hasDependenciesFilters = map.containsKey('dependenciesFilters');
+  final hasConcurrency = map.containsKey('concurrency');
   if (hasRun) {
     if (filtersValue != null) {
       throw CheckedFromJsonException(
@@ -1123,6 +1137,14 @@ RippleScript _scriptFromValue(
             '`dependenciesFilters`',
       );
     }
+    if (hasConcurrency) {
+      throw CheckedFromJsonException(
+        map,
+        'concurrency',
+        'RippleScript',
+        'Script "$name" uses `run:` and must not declare `concurrency`',
+      );
+    }
   }
 
   final kindKey = hasRun ? 'run' : 'exec';
@@ -1134,6 +1156,7 @@ RippleScript _scriptFromValue(
   );
   final description = _scriptDescriptionFromValue(map, name);
   final quiet = _scriptQuietFromValue(map, name);
+  final concurrency = hasExec ? _scriptConcurrencyFromValue(map, name) : null;
 
   return RippleScript(
     name: name,
@@ -1141,6 +1164,7 @@ RippleScript _scriptFromValue(
     commands: commands,
     description: description,
     quiet: quiet,
+    concurrency: concurrency,
     filters: hasExec
         ? _filtersFromValue(
             filtersValue,
@@ -1277,6 +1301,34 @@ bool _scriptQuietFromValue(
       'quiet',
       'RippleScript',
       'Script "$scriptName" `quiet:` must be a boolean',
+    );
+  }
+  return value;
+}
+
+/// Parses optional `concurrency:` as an int ≥ 1 (absent → `null`).
+int? _scriptConcurrencyFromValue(
+  Map<dynamic, dynamic> map,
+  String scriptName,
+) {
+  if (!map.containsKey('concurrency')) {
+    return null;
+  }
+  final value = map['concurrency'];
+  if (value is! int) {
+    throw CheckedFromJsonException(
+      map,
+      'concurrency',
+      'RippleScript',
+      'Script "$scriptName" `concurrency:` must be an integer',
+    );
+  }
+  if (value < 1) {
+    throw CheckedFromJsonException(
+      map,
+      'concurrency',
+      'RippleScript',
+      'Script "$scriptName" `concurrency:` must be at least 1',
     );
   }
   return value;
