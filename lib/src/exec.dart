@@ -550,6 +550,87 @@ bool resolveQuietMode({
   return cliQuiet || scriptQuiet;
 }
 
+/// Default package concurrency when neither CLI nor YAML sets a value.
+const defaultPackageConcurrency = 1;
+
+/// Resolves package concurrency for `exec` / `exec:` runs.
+///
+/// [cliConcurrency] wins when non-null (CLI `--concurrency` was passed).
+/// Otherwise [scriptConcurrency] from YAML `concurrency:` is used. When both
+/// are absent, returns [defaultPackageConcurrency] (`1`).
+///
+/// Throws [ArgumentError] when the resolved value is less than 1.
+int resolveConcurrency({
+  int? cliConcurrency,
+  int? scriptConcurrency,
+}) {
+  final value =
+      cliConcurrency ?? scriptConcurrency ?? defaultPackageConcurrency;
+  if (value < 1) {
+    throw ArgumentError.value(value, 'concurrency', 'must be at least 1');
+  }
+  return value;
+}
+
+/// Runs [run] for each item with at most [concurrency] invocations in flight.
+///
+/// Items are claimed in list order. With [concurrency] `1`, start order matches
+/// the input list (today’s sequential `relativePath` behavior). With
+/// [failFast], no further items are started after a non-zero exit; in-flight
+/// work may still finish.
+///
+/// Returns `0` when every invocation exits 0; otherwise the exit code of the
+/// earliest failing item in list order (stable vs concurrent completion order).
+Future<int> runWithBoundedConcurrency<T>({
+  required List<T> items,
+  required int concurrency,
+  required bool failFast,
+  required Future<int> Function(T item) run,
+}) async {
+  if (concurrency < 1) {
+    throw ArgumentError.value(concurrency, 'concurrency', 'must be at least 1');
+  }
+  if (items.isEmpty) {
+    return 0;
+  }
+
+  final workerCount =
+      concurrency > items.length ? items.length : concurrency;
+  var nextIndex = 0;
+  var stopStarting = false;
+  var earliestFailureIndex = -1;
+  var earliestFailureExitCode = 0;
+
+  Future<void> worker() async {
+    while (true) {
+      if (stopStarting) {
+        return;
+      }
+      final index = nextIndex;
+      if (index >= items.length) {
+        return;
+      }
+      nextIndex++;
+      final exitCode = await run(items[index]);
+      if (exitCode == 0) {
+        continue;
+      }
+      if (earliestFailureIndex < 0 || index < earliestFailureIndex) {
+        earliestFailureIndex = index;
+        earliestFailureExitCode = exitCode;
+      }
+      if (failFast) {
+        stopStarting = true;
+      }
+    }
+  }
+
+  await Future.wait<void>([
+    for (var i = 0; i < workerCount; i++) worker(),
+  ]);
+  return earliestFailureExitCode;
+}
+
 /// Runs [command] as an executable plus arguments.
 ///
 /// [command] must be non-empty; the first element is the executable and the
@@ -557,11 +638,14 @@ bool resolveQuietMode({
 ///
 /// When [inheritStdio] is `true` (default), the child's stdin/stdout/stderr
 /// are connected to this process: stdout/stderr are forwarded (and tracked for
-/// [terminalLineState]), and parent stdin is forwarded to the child. Result
-/// stdout/stderr strings are empty. Forwarding (instead of OS inherit) lets
-/// Ripple keep package banners on their own line after mid-line child output.
-/// When `false`, output is captured and returned on the result (useful for
-/// unit tests of the helper itself).
+/// [terminalLineState]), and parent stdin is forwarded to the child when
+/// [forwardStdin] is `true` (default). Result stdout/stderr strings are empty.
+/// Forwarding (instead of OS inherit) lets Ripple keep package banners on their
+/// own line after mid-line child output. When `false`, output is captured and
+/// returned on the result (useful for unit tests of the helper itself).
+///
+/// Set [forwardStdin] to `false` for concurrent package runs so a single parent
+/// stdin stream is not fan-out to multiple children.
 ///
 /// When [includeParentEnvironment] is `true` (default), [environment] is
 /// merged on top of the inherited parent environment. When `false`, the child
@@ -573,6 +657,7 @@ Future<ProcessRunResult> runProcess(
   required String workingDirectory,
   Map<String, String>? environment,
   bool inheritStdio = true,
+  bool forwardStdin = true,
   bool includeParentEnvironment = true,
 }) async {
   if (command.isEmpty) {
@@ -593,8 +678,13 @@ Future<ProcessRunResult> runProcess(
     final stdoutDone = _forwardAndTrack(process.stdout, stdout);
     final stderrDone = _forwardAndTrack(process.stderr, stderr);
     // Parent stdin is a single-subscription stream; share it across sequential
-    // child runs (multi-step scripts / multi-package exec).
-    final stdinSub = _forwardStdin(_sharedStdin(), process.stdin);
+    // child runs (multi-step scripts / multi-package exec). Concurrent package
+    // runs skip stdin forwarding ([forwardStdin] false).
+    final stdinSub =
+        forwardStdin ? _forwardStdin(_sharedStdin(), process.stdin) : null;
+    if (!forwardStdin) {
+      await process.stdin.close().catchError((_) {});
+    }
     try {
       final exitCode = await process.exitCode;
       await Future.wait<void>([stdoutDone, stderrDone]);
@@ -605,8 +695,10 @@ Future<ProcessRunResult> runProcess(
         stderr: '',
       );
     } finally {
-      await stdinSub.cancel();
-      await process.stdin.close().catchError((_) {});
+      await stdinSub?.cancel();
+      if (forwardStdin) {
+        await process.stdin.close().catchError((_) {});
+      }
     }
   }
 
