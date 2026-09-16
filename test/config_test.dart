@@ -211,6 +211,94 @@ scripts:
       );
     });
 
+    test('parses optional script concurrency on exec:', () {
+      const yaml = '''
+scripts:
+  analyze.ci:
+    concurrency: 4
+    exec: dart analyze .
+  check.ci:
+    exec: dart test
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(config.scripts['analyze.ci']!.concurrency, 4);
+      expect(config.scripts['check.ci']!.concurrency, isNull);
+    });
+
+    test('rejects concurrency on run: scripts', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    concurrency: 2
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('concurrency'),
+              contains('run:'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects concurrency less than 1', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  analyze.ci:
+    concurrency: 0
+    exec: dart analyze .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('concurrency'),
+              contains('at least 1'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a non-integer script concurrency', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  analyze.ci:
+    concurrency: true
+    exec: dart analyze .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('concurrency'),
+              contains('must be an integer'),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('defaults missing packages and scripts to empty', () {
       final config = parseRippleYaml('name: bare\n', rootPath: '/r');
       expect(config.name, 'bare');
