@@ -594,8 +594,7 @@ Future<int> runWithBoundedConcurrency<T>({
     return 0;
   }
 
-  final workerCount =
-      concurrency > items.length ? items.length : concurrency;
+  final workerCount = concurrency > items.length ? items.length : concurrency;
   var nextIndex = 0;
   var stopStarting = false;
   var earliestFailureIndex = -1;

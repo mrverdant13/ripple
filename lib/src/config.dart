@@ -1156,8 +1156,7 @@ RippleScript _scriptFromValue(
   );
   final description = _scriptDescriptionFromValue(map, name);
   final quiet = _scriptQuietFromValue(map, name);
-  final concurrency =
-      hasExec ? _scriptConcurrencyFromValue(map, name) : null;
+  final concurrency = hasExec ? _scriptConcurrencyFromValue(map, name) : null;
 
   return RippleScript(
     name: name,

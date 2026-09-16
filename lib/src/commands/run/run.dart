@@ -158,7 +158,7 @@ class RunCommand extends RippleCommand {
       usageException(
         'Unexpected arguments: ${rest.skip(1).join(' ')}.\n'
         'Usage: ripple run <script> [filters…] [--fail-fast] [--quiet] '
-            '[--concurrency <n>]',
+        '[--concurrency <n>]',
       );
     }
 
