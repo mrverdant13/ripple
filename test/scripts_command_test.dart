@@ -49,6 +49,7 @@ void main() {
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [
+        'pkg.concurrency  exec',
         'pkg.dependencies  exec',
         'pkg.dependents  exec',
         'pkg.dependents.constrained  exec',

@@ -31,6 +31,13 @@ class RunCommand extends RippleCommand {
         negatable: false,
       )
       ..addOption(
+        concurrencyOptionName,
+        help: 'For exec: scripts, max packages to run at once (default: 1). '
+            'Must be at least 1. Overrides script concurrency: when both are '
+            'set. Rejected for run: scripts.',
+        valueHelp: 'n',
+      )
+      ..addOption(
         groupOptionName,
         help: 'Only packages that belong to this named group from '
             'packages.groups. Valid only for exec: scripts.',
@@ -97,6 +104,9 @@ class RunCommand extends RippleCommand {
   /// Flag name for `--quiet`.
   static const quietFlagName = 'quiet';
 
+  /// Option name for `--concurrency`.
+  static const concurrencyOptionName = 'concurrency';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -133,7 +143,7 @@ class RunCommand extends RippleCommand {
   @override
   String get invocation =>
       '${runner.executableName} $name <script> [filters…] [--fail-fast] '
-      '[--quiet]';
+      '[--quiet] [--concurrency <n>]';
 
   @override
   Future<void> run() async {
@@ -147,7 +157,8 @@ class RunCommand extends RippleCommand {
     if (rest.length > 1) {
       usageException(
         'Unexpected arguments: ${rest.skip(1).join(' ')}.\n'
-        'Usage: ripple run <script> [filters…] [--fail-fast] [--quiet]',
+        'Usage: ripple run <script> [filters…] [--fail-fast] [--quiet] '
+            '[--concurrency <n>]',
       );
     }
 
@@ -192,8 +203,16 @@ class RunCommand extends RippleCommand {
       cliQuiet: argResults!.flag(quietFlagName),
       scriptQuiet: script.quiet,
     );
+    final cliConcurrencyParsed = argResults!.wasParsed(concurrencyOptionName);
 
     if (script.kind == ScriptKind.run) {
+      if (cliConcurrencyParsed) {
+        usageException(
+          'Script "$scriptName" is a run: script and does not accept '
+          '--$concurrencyOptionName.\n'
+          'Remove --$concurrencyOptionName.',
+        );
+      }
       if (!cliCriteria.isEmpty) {
         usageException(
           'Script "$scriptName" is a run: script and does not accept package '
@@ -281,17 +300,75 @@ class RunCommand extends RippleCommand {
     ).packages;
 
     final failFast = argResults!.flag(failFastFlagName);
-    var firstFailure = 0;
+    final concurrency = _resolveCliConcurrency(script.concurrency);
+    final forwardStdin = concurrency == 1;
 
-    for (final package in packages) {
-      final vars = rippleEnvironment(
-        rootPath: config.rootPath,
-        package: package,
-      );
-      if (quiet) {
-        final stepRecords = <_QuietStepRecord>[];
+    final firstFailure = await runWithBoundedConcurrency<RipplePackage>(
+      items: packages,
+      concurrency: concurrency,
+      failFast: failFast,
+      run: (package) async {
+        final vars = rippleEnvironment(
+          rootPath: config.rootPath,
+          package: package,
+        );
+        if (quiet) {
+          final stepRecords = <_QuietStepRecord>[];
+          var packageExitCode = 0;
+
+          for (final commandString in script.commands) {
+            final command = parseScriptCommand(commandString);
+            final resolvedCommand = resolveCommandReplacements(
+              command,
+              replacements: resolveReplacements(
+                config: config,
+                package: package,
+                workspacePackages: discovered,
+              ),
+              vars: vars,
+            );
+            final result = await _runCommand(
+              resolvedCommand,
+              workingDirectory: package.path,
+              environment: rippleChildEnvironment(vars),
+              includeParentEnvironment: false,
+              inheritStdio: false,
+            );
+            stepRecords.add(
+              _QuietStepRecord(
+                command: resolvedCommand,
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr,
+              ),
+            );
+            if (result.exitCode != 0) {
+              packageExitCode = result.exitCode;
+              break;
+            }
+          }
+
+          if (packageExitCode != 0) {
+            announcePackageScopeStart(package);
+            for (final step in stepRecords) {
+              announceCommandStart(step.command, scopeLabel: package.name);
+              writeCapturedChildOutput(
+                capturedStdout: step.stdout,
+                capturedStderr: step.stderr,
+              );
+              announceCommandEnd(
+                step.command,
+                scopeLabel: package.name,
+                exitCode: step.exitCode,
+              );
+            }
+            announcePackageScopeEnd(package, exitCode: packageExitCode);
+          }
+          return packageExitCode;
+        }
+
+        announcePackageScopeStart(package);
         var packageExitCode = 0;
-
         for (final commandString in script.commands) {
           final command = parseScriptCommand(commandString);
           final resolvedCommand = resolveCommandReplacements(
@@ -303,94 +380,55 @@ class RunCommand extends RippleCommand {
             ),
             vars: vars,
           );
+          announceCommandStart(resolvedCommand, scopeLabel: package.name);
           final result = await _runCommand(
             resolvedCommand,
             workingDirectory: package.path,
             environment: rippleChildEnvironment(vars),
             includeParentEnvironment: false,
-            inheritStdio: false,
+            forwardStdin: forwardStdin,
           );
-          stepRecords.add(
-            _QuietStepRecord(
-              command: resolvedCommand,
-              exitCode: result.exitCode,
-              stdout: result.stdout,
-              stderr: result.stderr,
-            ),
+          announceCommandEnd(
+            resolvedCommand,
+            scopeLabel: package.name,
+            exitCode: result.exitCode,
           );
+
           if (result.exitCode != 0) {
             packageExitCode = result.exitCode;
-            firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
             break;
           }
         }
-
-        if (packageExitCode != 0) {
-          announcePackageScopeStart(package);
-          for (final step in stepRecords) {
-            announceCommandStart(step.command, scopeLabel: package.name);
-            writeCapturedChildOutput(
-              capturedStdout: step.stdout,
-              capturedStderr: step.stderr,
-            );
-            announceCommandEnd(
-              step.command,
-              scopeLabel: package.name,
-              exitCode: step.exitCode,
-            );
-          }
-          announcePackageScopeEnd(package, exitCode: packageExitCode);
-          if (failFast) {
-            exitCode = packageExitCode;
-            return;
-          }
-        }
-        continue;
-      }
-
-      announcePackageScopeStart(package);
-      var packageExitCode = 0;
-      for (final commandString in script.commands) {
-        final command = parseScriptCommand(commandString);
-        final resolvedCommand = resolveCommandReplacements(
-          command,
-          replacements: resolveReplacements(
-            config: config,
-            package: package,
-            workspacePackages: discovered,
-          ),
-          vars: vars,
-        );
-        announceCommandStart(resolvedCommand, scopeLabel: package.name);
-        final result = await _runCommand(
-          resolvedCommand,
-          workingDirectory: package.path,
-          environment: rippleChildEnvironment(vars),
-          includeParentEnvironment: false,
-        );
-        announceCommandEnd(
-          resolvedCommand,
-          scopeLabel: package.name,
-          exitCode: result.exitCode,
-        );
-
-        if (result.exitCode != 0) {
-          packageExitCode = result.exitCode;
-          firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
-          if (failFast) {
-            announcePackageScopeEnd(package, exitCode: packageExitCode);
-            exitCode = result.exitCode;
-            return;
-          }
-          break;
-        }
-      }
-      announcePackageScopeEnd(package, exitCode: packageExitCode);
-    }
+        announcePackageScopeEnd(package, exitCode: packageExitCode);
+        return packageExitCode;
+      },
+    );
 
     if (firstFailure != 0) {
       exitCode = firstFailure;
     }
+  }
+
+  int _resolveCliConcurrency(int? scriptConcurrency) {
+    if (!argResults!.wasParsed(concurrencyOptionName)) {
+      return resolveConcurrency(scriptConcurrency: scriptConcurrency);
+    }
+    final raw = argResults!.option(concurrencyOptionName)!;
+    final parsed = int.tryParse(raw);
+    if (parsed == null) {
+      usageException(
+        'Invalid --$concurrencyOptionName: expected an integer, got "$raw"',
+      );
+    }
+    if (parsed < 1) {
+      usageException(
+        'Invalid --$concurrencyOptionName: must be at least 1',
+      );
+    }
+    return resolveConcurrency(
+      cliConcurrency: parsed,
+      scriptConcurrency: scriptConcurrency,
+    );
   }
 
   Future<ProcessRunResult> _runCommand(
@@ -399,6 +437,7 @@ class RunCommand extends RippleCommand {
     required Map<String, String> environment,
     bool includeParentEnvironment = true,
     bool inheritStdio = true,
+    bool forwardStdin = true,
   }) async {
     try {
       return await runProcess(
@@ -407,6 +446,7 @@ class RunCommand extends RippleCommand {
         environment: environment,
         includeParentEnvironment: includeParentEnvironment,
         inheritStdio: inheritStdio,
+        forwardStdin: forwardStdin,
       );
     } on ProcessException catch (error) {
       final executable = command.isEmpty ? '(empty)' : command.first;
