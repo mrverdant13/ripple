@@ -20,6 +20,12 @@ class ExecCommand extends RippleCommand {
         help: 'Stop after the first package whose command exits non-zero.',
         negatable: false,
       )
+      ..addFlag(
+        quietFlagName,
+        help: 'Omit banners and child stdout/stderr for packages that exit 0. '
+            'Failed packages still print banners and output.',
+        negatable: false,
+      )
       ..addOption(
         groupOptionName,
         help: 'Only packages that belong to this named group from '
@@ -80,6 +86,9 @@ class ExecCommand extends RippleCommand {
   /// Flag name for `--fail-fast`.
   static const failFastFlagName = 'fail-fast';
 
+  /// Flag name for `--quiet`.
+  static const quietFlagName = 'quiet';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -112,7 +121,8 @@ class ExecCommand extends RippleCommand {
 
   @override
   String get invocation =>
-      '${runner.executableName} $name [filters…] [--fail-fast] -- <command…>';
+      '${runner.executableName} $name [filters…] [--fail-fast] [--quiet] -- '
+      '<command…>';
 
   @override
   Future<void> run() async {
@@ -167,10 +177,10 @@ class ExecCommand extends RippleCommand {
     );
 
     final failFast = argResults!.flag(failFastFlagName);
+    final quiet = resolveQuietMode(cliQuiet: argResults!.flag(quietFlagName));
     var firstFailure = 0;
 
     for (final package in filtered) {
-      announcePackageScopeStart(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,
@@ -184,6 +194,37 @@ class ExecCommand extends RippleCommand {
         ),
         vars: vars,
       );
+
+      if (quiet) {
+        final result = await _runPackageCommand(
+          resolvedCommand,
+          workingDirectory: package.path,
+          environment: rippleChildEnvironment(vars),
+          inheritStdio: false,
+        );
+        if (result.exitCode != 0) {
+          announcePackageScopeStart(package);
+          announceCommandStart(resolvedCommand, scopeLabel: package.name);
+          writeCapturedChildOutput(
+            capturedStdout: result.stdout,
+            capturedStderr: result.stderr,
+          );
+          announceCommandEnd(
+            resolvedCommand,
+            scopeLabel: package.name,
+            exitCode: result.exitCode,
+          );
+          announcePackageScopeEnd(package, exitCode: result.exitCode);
+          firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
+          if (failFast) {
+            exitCode = result.exitCode;
+            return;
+          }
+        }
+        continue;
+      }
+
+      announcePackageScopeStart(package);
       announceCommandStart(resolvedCommand, scopeLabel: package.name);
       final result = await _runPackageCommand(
         resolvedCommand,
@@ -218,23 +259,32 @@ class ExecCommand extends RippleCommand {
     List<String> command, {
     required String workingDirectory,
     required Map<String, String> environment,
+    bool inheritStdio = true,
   }) async {
     try {
       return await runProcess(
         command,
         workingDirectory: workingDirectory,
         environment: environment,
+        inheritStdio: inheritStdio,
         includeParentEnvironment: false,
       );
     } on ProcessException catch (error) {
       final executable = command.isEmpty ? '(empty)' : command.first;
-      stderr.writeln(
-        'Failed to run "$executable" in $workingDirectory: ${error.message}',
-      );
-      return const ProcessRunResult(
+      final message =
+          'Failed to run "$executable" in $workingDirectory: ${error.message}';
+      if (inheritStdio) {
+        stderr.writeln(message);
+        return const ProcessRunResult(
+          exitCode: spawnFailureExitCode,
+          stdout: '',
+          stderr: '',
+        );
+      }
+      return ProcessRunResult(
         exitCode: spawnFailureExitCode,
         stdout: '',
-        stderr: '',
+        stderr: '$message\n',
       );
     }
   }

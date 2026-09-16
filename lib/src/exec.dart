@@ -517,6 +517,39 @@ class ProcessRunResult {
   final String stderr;
 }
 
+/// Writes captured child stdout/stderr to the parent process sinks.
+///
+/// Used after a quiet run fails so banners can frame the buffered output.
+/// Updates [terminalLineState] the same way live forwarding does.
+void writeCapturedChildOutput({
+  required String capturedStdout,
+  required String capturedStderr,
+  StringSink? stdoutSink,
+  StringSink? stderrSink,
+}) {
+  final out = stdoutSink ?? stdout;
+  final err = stderrSink ?? stderr;
+  if (capturedStdout.isNotEmpty) {
+    out.write(capturedStdout);
+    terminalLineState.observeText(capturedStdout);
+  }
+  if (capturedStderr.isNotEmpty) {
+    err.write(capturedStderr);
+    terminalLineState.observeText(capturedStderr);
+  }
+}
+
+/// Resolves whether quiet mode is active.
+///
+/// CLI `--quiet` enables quiet whenever present. Otherwise [scriptQuiet] from
+/// YAML `quiet:` is used. When both are set, the CLI flag wins (both true).
+bool resolveQuietMode({
+  required bool cliQuiet,
+  bool scriptQuiet = false,
+}) {
+  return cliQuiet || scriptQuiet;
+}
+
 /// Runs [command] as an executable plus arguments.
 ///
 /// [command] must be non-empty; the first element is the executable and the

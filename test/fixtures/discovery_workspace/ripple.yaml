@@ -90,3 +90,14 @@ scripts:
   pkg.dependents.env:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_PACKAGE_NAME
     dependentsFilters: []
+  pkg.quiet:
+    quiet: true
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart fail-if RIPPLE_PACKAGE_NAME=core --exit 3 --print-env RIPPLE_PACKAGE_NAME
+  root.quiet:
+    quiet: true
+    run: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart echo ok
+  root.quiet.fail:
+    quiet: true
+    run:
+      - dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart echo ok
+      - dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart write-then-exit boom 7

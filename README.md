@@ -340,6 +340,11 @@ Each script must declare **exactly one** of `run:` or `exec:` (XOR):
 Optional `description:` is a one-line summary shown by
 [`ripple scripts`](#ripple-scripts). It is ignored by `ripple run`.
 
+Optional `quiet: true` omits banners and child stdout/stderr for successful
+packages (`exec:`) or successful root steps (`run:`). Failed packages or steps
+still print banners and output. CLI `--quiet` enables the same behavior and
+wins when both are set.
+
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
 exit. For `exec:` lists, all steps run for a package before the next package
@@ -355,6 +360,7 @@ scripts:
     run: dart format --set-exit-if-changed .
 
   check.ci:
+    quiet: true
     run:
       - dart format --set-exit-if-changed .
       - dart analyze --fatal-infos --fatal-warnings .
@@ -541,21 +547,28 @@ end by exit code). Color is disabled when stderr is not a TTY, when
 cursor mid-line (for example `printf` without a trailing newline), Ripple
 inserts a newline before the next banner so markers stay on their own line.
 
+With `--quiet` (or script `quiet: true`), successful packages produce no banners
+and no child stdout/stderr. A failing package still prints its banners and
+captured output; later packages stay silent when they succeed. Combined with
+`--fail-fast`, packages after the first failure are not started.
+
 ```bash
 ripple exec -- dart analyze .
 ripple exec -- '{{dart}}' analyze .
 ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
+ripple exec --quiet -- dart analyze --fatal-infos --fatal-warnings .
 ```
 
 Quoting each `{{key}}` token is required in PowerShell and optional in
 bash and cmd. See [Shell quoting](#shell-quoting).
 
-Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
+Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 
 | Flag | Description |
 | --- | --- |
 | `--fail-fast` | Stop after the first package whose command exits non-zero. |
+| `--quiet` | Omit banners and child stdout/stderr for packages that exit 0. Failed packages still print banners and output. |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Without `--fail-fast`, every selected package still runs; the overall exit code
@@ -572,6 +585,7 @@ Execute a named script from `ripple.yaml`. Script ids may contain dots
 ripple run format.ci
 ripple run analyze.ci --group libs
 ripple run analyze.ci --match core --match ui --fail-fast
+ripple run check.ci --quiet
 ```
 
 Behavior depends on the script kind:
@@ -595,11 +609,12 @@ Behavior depends on the script kind:
   start/end banners stamped with the package name. The package end banner
   reports that package's exit code.
 
-Uses the same filter flags as [`ripple list`](#ripple-list). Additional flag:
+Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 
 | Flag | Description |
 | --- | --- |
 | `--fail-fast` | For `exec:` scripts, stop after the first package whose command exits non-zero. |
+| `--quiet` | Omit banners and child stdout/stderr for successful packages (`exec:`) or successful root steps (`run:`). Failed packages or steps still print banners and output. Overrides script `quiet:` when both are set. |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Unknown script names fail with a clear error that lists available scripts.

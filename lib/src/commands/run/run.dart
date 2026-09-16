@@ -22,6 +22,14 @@ class RunCommand extends RippleCommand {
             'exits non-zero.',
         negatable: false,
       )
+      ..addFlag(
+        quietFlagName,
+        help: 'Omit banners and child stdout/stderr for successful packages '
+            '(exec:) or successful root steps (run:). Failed packages or '
+            'steps still print banners and output. Overrides script quiet: '
+            'when both are set.',
+        negatable: false,
+      )
       ..addOption(
         groupOptionName,
         help: 'Only packages that belong to this named group from '
@@ -86,6 +94,9 @@ class RunCommand extends RippleCommand {
   /// Flag name for `--fail-fast`.
   static const failFastFlagName = 'fail-fast';
 
+  /// Flag name for `--quiet`.
+  static const quietFlagName = 'quiet';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -121,7 +132,8 @@ class RunCommand extends RippleCommand {
 
   @override
   String get invocation =>
-      '${runner.executableName} $name <script> [filters…] [--fail-fast]';
+      '${runner.executableName} $name <script> [filters…] [--fail-fast] '
+      '[--quiet]';
 
   @override
   Future<void> run() async {
@@ -135,7 +147,7 @@ class RunCommand extends RippleCommand {
     if (rest.length > 1) {
       usageException(
         'Unexpected arguments: ${rest.skip(1).join(' ')}.\n'
-        'Usage: ripple run <script> [filters…] [--fail-fast]',
+        'Usage: ripple run <script> [filters…] [--fail-fast] [--quiet]',
       );
     }
 
@@ -176,6 +188,11 @@ class RunCommand extends RippleCommand {
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 
+    final quiet = resolveQuietMode(
+      cliQuiet: argResults!.flag(quietFlagName),
+      scriptQuiet: script.quiet,
+    );
+
     if (script.kind == ScriptKind.run) {
       if (!cliCriteria.isEmpty) {
         usageException(
@@ -190,7 +207,9 @@ class RunCommand extends RippleCommand {
       // run: scripts must not observe package-scoped RIPPLE_* vars, even when
       // those are present in the parent environment.
       final environment = rippleChildEnvironment(vars);
-      announceRootScopeStart();
+      if (!quiet) {
+        announceRootScopeStart();
+      }
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
         final resolvedCommand = resolveCommandReplacements(
@@ -198,6 +217,33 @@ class RunCommand extends RippleCommand {
           replacements: resolveReplacements(config: config),
           vars: vars,
         );
+        if (quiet) {
+          final result = await _runCommand(
+            resolvedCommand,
+            workingDirectory: config.rootPath,
+            environment: environment,
+            includeParentEnvironment: false,
+            inheritStdio: false,
+          );
+          if (result.exitCode != 0) {
+            announceRootScopeStart();
+            announceCommandStart(resolvedCommand, scopeLabel: rootScopeLabel);
+            writeCapturedChildOutput(
+              capturedStdout: result.stdout,
+              capturedStderr: result.stderr,
+            );
+            announceCommandEnd(
+              resolvedCommand,
+              scopeLabel: rootScopeLabel,
+              exitCode: result.exitCode,
+            );
+            announceRootScopeEnd(exitCode: result.exitCode);
+            exitCode = result.exitCode;
+            return;
+          }
+          continue;
+        }
+
         announceCommandStart(resolvedCommand, scopeLabel: rootScopeLabel);
         final result = await _runCommand(
           resolvedCommand,
@@ -216,7 +262,9 @@ class RunCommand extends RippleCommand {
           return;
         }
       }
-      announceRootScopeEnd(exitCode: 0);
+      if (!quiet) {
+        announceRootScopeEnd(exitCode: 0);
+      }
       return;
     }
 
@@ -236,11 +284,71 @@ class RunCommand extends RippleCommand {
     var firstFailure = 0;
 
     for (final package in packages) {
-      announcePackageScopeStart(package);
       final vars = rippleEnvironment(
         rootPath: config.rootPath,
         package: package,
       );
+      if (quiet) {
+        final stepRecords = <_QuietStepRecord>[];
+        var packageExitCode = 0;
+
+        for (final commandString in script.commands) {
+          final command = parseScriptCommand(commandString);
+          final resolvedCommand = resolveCommandReplacements(
+            command,
+            replacements: resolveReplacements(
+              config: config,
+              package: package,
+              workspacePackages: discovered,
+            ),
+            vars: vars,
+          );
+          final result = await _runCommand(
+            resolvedCommand,
+            workingDirectory: package.path,
+            environment: rippleChildEnvironment(vars),
+            includeParentEnvironment: false,
+            inheritStdio: false,
+          );
+          stepRecords.add(
+            _QuietStepRecord(
+              command: resolvedCommand,
+              exitCode: result.exitCode,
+              stdout: result.stdout,
+              stderr: result.stderr,
+            ),
+          );
+          if (result.exitCode != 0) {
+            packageExitCode = result.exitCode;
+            firstFailure = firstFailure == 0 ? result.exitCode : firstFailure;
+            break;
+          }
+        }
+
+        if (packageExitCode != 0) {
+          announcePackageScopeStart(package);
+          for (final step in stepRecords) {
+            announceCommandStart(step.command, scopeLabel: package.name);
+            writeCapturedChildOutput(
+              capturedStdout: step.stdout,
+              capturedStderr: step.stderr,
+            );
+            announceCommandEnd(
+              step.command,
+              scopeLabel: package.name,
+              exitCode: step.exitCode,
+            );
+          }
+          announcePackageScopeEnd(package, exitCode: packageExitCode);
+          if (failFast) {
+            exitCode = packageExitCode;
+            return;
+          }
+        }
+        continue;
+      }
+
+      announcePackageScopeStart(package);
       var packageExitCode = 0;
       for (final commandString in script.commands) {
         final command = parseScriptCommand(commandString);
@@ -290,6 +398,7 @@ class RunCommand extends RippleCommand {
     required String workingDirectory,
     required Map<String, String> environment,
     bool includeParentEnvironment = true,
+    bool inheritStdio = true,
   }) async {
     try {
       return await runProcess(
@@ -297,17 +406,39 @@ class RunCommand extends RippleCommand {
         workingDirectory: workingDirectory,
         environment: environment,
         includeParentEnvironment: includeParentEnvironment,
+        inheritStdio: inheritStdio,
       );
     } on ProcessException catch (error) {
       final executable = command.isEmpty ? '(empty)' : command.first;
-      stderr.writeln(
-        'Failed to run "$executable" in $workingDirectory: ${error.message}',
-      );
-      return const ProcessRunResult(
+      final message =
+          'Failed to run "$executable" in $workingDirectory: ${error.message}';
+      if (inheritStdio) {
+        stderr.writeln(message);
+        return const ProcessRunResult(
+          exitCode: spawnFailureExitCode,
+          stdout: '',
+          stderr: '',
+        );
+      }
+      return ProcessRunResult(
         exitCode: spawnFailureExitCode,
         stdout: '',
-        stderr: '',
+        stderr: '$message\n',
       );
     }
   }
+}
+
+class _QuietStepRecord {
+  const _QuietStepRecord({
+    required this.command,
+    required this.exitCode,
+    required this.stdout,
+    required this.stderr,
+  });
+
+  final List<String> command;
+  final int exitCode;
+  final String stdout;
+  final String stderr;
 }

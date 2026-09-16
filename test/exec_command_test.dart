@@ -394,6 +394,7 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr as String);
       final help = result.stdout as String;
       expect(help, contains('--fail-fast'));
+      expect(help, contains('--quiet'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -402,6 +403,82 @@ void main() {
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--override'));
+    });
+
+    test('--quiet suppresses banners and output when all packages succeed',
+        () async {
+      final result = await runRipple([
+        'exec',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['echo', 'ok']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(result.stdout, isEmpty);
+      expect(result.stderr, isEmpty);
+    });
+
+    test('--quiet prints banners and output only for failing packages',
+        () async {
+      const failIf = [
+        'fail-if',
+        'RIPPLE_PACKAGE_NAME=core',
+        '--exit',
+        '3',
+        '--print-env',
+        'RIPPLE_PACKAGE_NAME',
+      ];
+      final result = await runRipple([
+        'exec',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(failIf),
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(stdoutLines(result), ['core']);
+      expect(stderrLines(result), [
+        '[ripple] ▶ core @ packages/core',
+        commandStart('core', failIf),
+        commandEnd('core', failIf, 3),
+        '[ripple] ■ core @ packages/core  (exit 3)',
+      ]);
+      expect(result.stderr, isNot(contains('ui @ packages/ui')));
+    });
+
+    test('--quiet with --fail-fast does not start later packages', () async {
+      final result = await runRipple([
+        'exec',
+        '--quiet',
+        '--fail-fast',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe([
+          'fail-if',
+          'RIPPLE_PACKAGE_NAME=core',
+          '--exit',
+          '3',
+          '--print-env',
+          'RIPPLE_PACKAGE_NAME',
+        ]),
+      ]);
+
+      expect(result.exitCode, 3);
+      expect(stdoutLines(result), ['core']);
+      expect(result.stdout, isNot(contains('ui')));
+      expect(result.stderr, isNot(contains('ui @ packages/ui')));
     });
   });
 }

@@ -256,6 +256,10 @@ final class GraphExpansionFilters {
 ///
 /// Optional [description] is documentation only; it is not used when running
 /// the script.
+///
+/// Optional [quiet] omits banners and child stdio for successful packages
+/// (`exec:`) or successful root steps (`run:`). CLI `--quiet` enables the same
+/// behavior and wins when both are set.
 class RippleScript {
   /// Creates a validated script entry.
   const RippleScript({
@@ -266,6 +270,7 @@ class RippleScript {
     this.dependentsFilters,
     this.dependenciesFilters,
     this.description,
+    this.quiet = false,
   }) : assert(
           kind == ScriptKind.exec ||
               (filters == null &&
@@ -282,6 +287,10 @@ class RippleScript {
 
   /// Optional one-line summary from `description:` (ignored by `ripple run`).
   final String? description;
+
+  /// When `true`, successful packages / root steps stay silent (see CLI
+  /// `--quiet`). Failed packages / steps still print banners and child output.
+  final bool quiet;
 
   /// Command strings from `run:` or `exec:` (string or YAML list).
   ///
@@ -1124,12 +1133,14 @@ RippleScript _scriptFromValue(
     scriptName: name,
   );
   final description = _scriptDescriptionFromValue(map, name);
+  final quiet = _scriptQuietFromValue(map, name);
 
   return RippleScript(
     name: name,
     kind: hasRun ? ScriptKind.run : ScriptKind.exec,
     commands: commands,
     description: description,
+    quiet: quiet,
     filters: hasExec
         ? _filtersFromValue(
             filtersValue,
@@ -1249,6 +1260,26 @@ String? _scriptDescriptionFromValue(
     );
   }
   return trimmed;
+}
+
+/// Parses optional `quiet:` as a boolean (absent → `false`).
+bool _scriptQuietFromValue(
+  Map<dynamic, dynamic> map,
+  String scriptName,
+) {
+  final value = map['quiet'];
+  if (value == null) {
+    return false;
+  }
+  if (value is! bool) {
+    throw CheckedFromJsonException(
+      map,
+      'quiet',
+      'RippleScript',
+      'Script "$scriptName" `quiet:` must be a boolean',
+    );
+  }
+  return value;
 }
 
 /// Parses a `run:` / `exec:` value as a non-empty string or list of strings.
