@@ -233,6 +233,159 @@ void main() {
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
+      expect(help, contains('--format'));
+      expect(help, contains('paths'));
+      expect(help, contains('json'));
+      expect(help, contains('mermaid'));
+    });
+
+    test('--format paths matches default output', () async {
+      final defaultResult = await runRipple(['list']);
+      final pathsResult = await runRipple(['list', '--format', 'paths']);
+
+      expect(defaultResult.exitCode, 0, reason: defaultResult.stderr as String);
+      expect(pathsResult.exitCode, 0, reason: pathsResult.stderr as String);
+      expect(pathsResult.stdout, defaultResult.stdout);
+      expect(stdoutLines(pathsResult), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+        'tool',
+      ]);
+    });
+
+    test('--format json prints a valid package array', () async {
+      final result = await runRipple(['list', '--format', 'json']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final decoded = jsonDecode((result.stdout as String).trim()) as List;
+      expect(decoded, hasLength(4));
+      expect(
+        decoded.map((entry) => (entry as Map)['path']).toList(),
+        [
+          'packages/app',
+          'packages/core',
+          'packages/ui',
+          'tool',
+        ],
+      );
+
+      final ui = decoded.cast<Map<String, dynamic>>().singleWhere(
+            (entry) => entry['name'] == 'ui',
+          );
+      expect(ui['version'], '1.2.3');
+      expect(ui['sdk'], 'dart');
+      expect(ui['workspaceDependencies'], ['core']);
+      expect(ui['workspaceDependents'], ['app']);
+
+      final core = decoded.cast<Map<String, dynamic>>().singleWhere(
+            (entry) => entry['name'] == 'core',
+          );
+      expect(core['version'], isNull);
+      expect(core['workspaceDependencies'], isEmpty);
+    });
+
+    test('--format json respects --match and keeps workspace edges', () async {
+      final result = await runRipple([
+        'list',
+        '--format',
+        'json',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final decoded = jsonDecode((result.stdout as String).trim()) as List;
+      expect(decoded, hasLength(1));
+      final ui = decoded.single as Map<String, dynamic>;
+      expect(ui['path'], 'packages/ui');
+      expect(ui['workspaceDependencies'], ['core']);
+      expect(ui['workspaceDependents'], ['app']);
+    });
+
+    test('--format mermaid prints workspace edges and isolates', () async {
+      final result = await runRipple(['list', '--format', 'mermaid']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final mermaid = result.stdout as String;
+      expect(mermaid, startsWith('flowchart TD\n'));
+      expect(mermaid, contains('ui --> core'));
+      expect(mermaid, contains('app --> ui'));
+      expect(mermaid, contains('tool_pkg'));
+      expect(mermaid, isNot(contains('path')));
+    });
+
+    test('--format mermaid with --match keeps only selected nodes', () async {
+      final result = await runRipple([
+        'list',
+        '--format',
+        'mermaid',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final mermaid = result.stdout as String;
+      expect(mermaid, contains('  ui\n'));
+      expect(mermaid, isNot(contains('-->')));
+      expect(mermaid, isNot(contains('core')));
+      expect(mermaid, isNot(contains('app')));
+    });
+
+    test('unknown --format is a usage error', () async {
+      final result = await runRipple(['list', '--format', 'yaml']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('format'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
+    });
+
+    test('--format json reports flutter sdk from environment.flutter',
+        () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_list_sdk_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: sdk_probe
+packages:
+  include:
+    - packages/*
+''');
+      final flutterPkg = Directory(p.join(temp.path, 'packages', 'ui_kit'))
+        ..createSync(recursive: true);
+      File(p.join(flutterPkg.path, 'pubspec.yaml')).writeAsStringSync('''
+name: ui_kit
+version: 0.1.0
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''');
+      final dartPkg = Directory(p.join(temp.path, 'packages', 'core'))
+        ..createSync(recursive: true);
+      File(p.join(dartPkg.path, 'pubspec.yaml')).writeAsStringSync('''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''');
+
+      final result = await runRipple(
+        ['list', '--format', 'json'],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final decoded = jsonDecode((result.stdout as String).trim()) as List;
+      final byName = {
+        for (final entry in decoded.cast<Map<String, dynamic>>())
+          entry['name'] as String: entry,
+      };
+      expect(byName['ui_kit']!['sdk'], 'flutter');
+      expect(byName['core']!['sdk'], 'dart');
     });
   });
 }
