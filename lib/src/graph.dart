@@ -117,10 +117,8 @@ class WorkspaceGraph {
         }
         remainingIndegree[package.relativePath] =
             remainingIndegree[package.relativePath]! + 1;
-        dependentsAmongSelected[dep.relativePath]!
-            .add(package.relativePath);
-        dependenciesAmongSelected[package.relativePath]!
-            .add(dep.relativePath);
+        dependentsAmongSelected[dep.relativePath]!.add(package.relativePath);
+        dependenciesAmongSelected[package.relativePath]!.add(dep.relativePath);
       }
     }
 

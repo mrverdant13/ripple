@@ -99,7 +99,8 @@ Future<void> main(List<String> args) async {
       await Future<void>.delayed(Duration(milliseconds: sleepMs));
       final end = DateTime.now().microsecondsSinceEpoch;
       // Per-package stamp avoids concurrent append interleaving.
-      File('$logPath.$packageName').writeAsStringSync('start $start\nend $end\n');
+      File('$logPath.$packageName')
+          .writeAsStringSync('start $start\nend $end\n');
     case 'append-file':
       if (args.length < 3) {
         stderr.writeln('probe append-file: missing PATH or TEXT');
