@@ -19,3 +19,4 @@ Thumbs.db
 coverage/
 **/test/optimized_test.dart
 *.log
+test/fixtures/**/.concurrency_stamp.*

@@ -11,6 +11,7 @@ import 'config.dart';
 import 'discovery.dart';
 import 'git_diff.dart';
 import 'graph.dart';
+import 'list_format.dart';
 
 /// Environment variable for comma-separated package name selection.
 ///
@@ -53,6 +54,7 @@ class PackageFilterCriteria {
     List<String> groups = const [],
     List<String> presets = const [],
     String? changed,
+    String? sdk,
     List<String>? packageNames,
   }) {
     final leaves = <FilterExpr>[
@@ -64,6 +66,7 @@ class PackageFilterCriteria {
       if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
       for (final preset in presets) FilterPreset(preset),
       if (changed != null) FilterChanged(changed),
+      if (sdk != null) FilterSdk(sdk),
     ];
     return PackageFilterCriteria(
       expression: _andLeaves(leaves),
@@ -184,7 +187,8 @@ FilterExpr resolveFilterPresets(
     FilterGroup() ||
     FilterMatch() ||
     FilterNoMatch() ||
-    FilterChanged() =>
+    FilterChanged() ||
+    FilterSdk() =>
       expression,
   };
 }
@@ -477,7 +481,8 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterMatch() ||
     FilterNoMatch() ||
     FilterPreset() ||
-    FilterChanged() =>
+    FilterChanged() ||
+    FilterSdk() =>
       const {},
   };
 }
@@ -545,6 +550,7 @@ bool _matchesExpression(
       globs.isEmpty || !_matchesAnyName(package.name, globs, globCache),
     final FilterChanged filter =>
       changedContext.changedOwners(filter).contains(package.relativePath),
+    FilterSdk(:final sdk) => _matchesSdk(package, sdk, pubspecCache),
     // Presets are expanded by [resolveFilterPresets] before matching.
     FilterPreset(:final name) => throw StateError(
         'Unresolved filter preset "$name" during evaluation',
@@ -625,6 +631,14 @@ bool _matchesDependsOn(
     }
   }
   return true;
+}
+
+bool _matchesSdk(
+  RipplePackage package,
+  String sdk,
+  Map<String, Pubspec> pubspecCache,
+) {
+  return packageSdkLabel(_cachedPubspec(package, pubspecCache)) == sdk;
 }
 
 Pubspec _cachedPubspec(

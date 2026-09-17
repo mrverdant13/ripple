@@ -1293,6 +1293,95 @@ scripts:
       );
     });
 
+    test('parses sdk filter on exec scripts', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  analyze.dart:
+    exec: dart analyze .
+    filters:
+      - sdk: dart
+  analyze.flutter:
+    exec: dart analyze .
+    filters:
+      - sdk: flutter
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['analyze.dart']!.filters,
+        const FilterAnd([FilterSdk(packageSdkDart)]),
+      );
+      expect(
+        config.scripts['analyze.flutter']!.filters,
+        const FilterAnd([FilterSdk(packageSdkFlutter)]),
+      );
+    });
+
+    test('rejects unknown sdk filter values', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - sdk: node
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('sdk'), contains('dart'), contains('flutter')),
+          ),
+        ),
+      );
+    });
+
+    test('rejects map-form and list-form sdk filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - sdk:
+          kind: flutter
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('sdk` must be a string'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - sdk: [dart, flutter]
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('sdk` must be a string'),
+          ),
+        ),
+      );
+    });
+
     test('rejects list-form changed filter', () {
       expect(
         () => parseRippleYaml(

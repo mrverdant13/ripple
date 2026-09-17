@@ -427,6 +427,12 @@ scripts:
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 | `changed` | single descriptor string | Package had path changes per git (see below) |
+| `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
+
+`sdk: flutter` means the package declares `environment.flutter` in
+`pubspec.yaml`. A `flutter:` SDK dependency alone does **not** count (use
+`dependsOn: [flutter]` for that). `sdk: dart` is the complement. Pass at most
+one `--sdk` value (two values would be an empty set).
 
 `changed` accepts **one** descriptor (not a list). Combine modes with `or:`,
 not multiple values on the same leaf:
@@ -527,6 +533,8 @@ ripple list --dir-exists test
 ripple list --file-exists README.md
 ripple list --depends-on path
 ripple list --preset e2eTestable
+ripple list --sdk dart
+ripple list --sdk flutter --group apps
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
 ripple list --match core --dependents
@@ -544,6 +552,7 @@ ripple list --changed since:origin/main --dependents
 | `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
+| `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
@@ -556,7 +565,7 @@ json` prints a JSON array of objects, stable by `path`, with:
 | `name` | Pubspec package name |
 | `path` | Path relative to the Ripple root |
 | `version` | Pubspec `version` string, or `null` when absent |
-| `sdk` | `"flutter"` when `environment.flutter` is set, otherwise `"dart"` |
+| `sdk` | `"flutter"` when `environment.flutter` is set, otherwise `"dart"` (same rule as `--sdk` / YAML `sdk:`) |
 | `workspaceDependencies` | Direct workspace dependency **names** (hosted deps omitted) |
 | `workspaceDependents` | Direct workspace dependent **names** |
 
@@ -656,7 +665,7 @@ Behavior depends on the script kind:
   Only `RIPPLE_ROOT_PATH` is set. Package-scoped `RIPPLE_PACKAGE_*` variables
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
-  `--file-exists`, `--depends-on`, `--preset`, `--changed`, and
+  `--file-exists`, `--depends-on`, `--preset`, `--changed`, `--sdk`, and
   `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
   rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
   banners use `(root)`; each step also gets command start/end banners stamped

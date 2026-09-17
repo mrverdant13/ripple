@@ -690,4 +690,157 @@ void main() {
       expect(names(selection.packages), ['core']);
     });
   });
+
+  group('filterPackages — sdk', () {
+    late Directory temp;
+    late RippleConfig sdkConfig;
+    late List<RipplePackage> sdkPackages;
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('ripple_sdk_filter_');
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: sdk_workspace
+packages:
+  include:
+    - packages/*
+  groups:
+    apps:
+      - packages/mobile
+      - packages/admin
+''');
+      _writePubspec(
+        p.join(temp.path, 'packages', 'core'),
+        '''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'api_client'),
+        '''
+name: api_client
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'ui'),
+        '''
+name: ui
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'mobile'),
+        '''
+name: mobile
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'admin'),
+        '''
+name: admin
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'macos_only'),
+        '''
+name: macos_only
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      // Flutter SDK dep without environment.flutter — not a Flutter package.
+      _writePubspec(
+        p.join(temp.path, 'packages', 'fake_flutter_dep'),
+        '''
+name: fake_flutter_dep
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+dependencies:
+  flutter:
+    sdk: flutter
+''',
+      );
+
+      sdkConfig = loadRippleConfig(start: temp);
+      sdkPackages = discoverPackages(sdkConfig);
+    });
+
+    tearDown(() {
+      if (temp.existsSync()) {
+        temp.deleteSync(recursive: true);
+      }
+    });
+
+    test('sdk flutter matches environment.flutter packages only', () {
+      final filtered = filterPackages(
+        sdkPackages,
+        config: sdkConfig,
+        criteria: criteria(const FilterSdk(packageSdkFlutter)),
+      );
+
+      expect(names(filtered), ['admin', 'macos_only', 'mobile', 'ui']);
+    });
+
+    test('sdk dart matches packages without environment.flutter', () {
+      final filtered = filterPackages(
+        sdkPackages,
+        config: sdkConfig,
+        criteria: criteria(const FilterSdk(packageSdkDart)),
+      );
+
+      expect(names(filtered), ['api_client', 'core', 'fake_flutter_dep']);
+    });
+
+    test('flutter SDK dependency alone does not match sdk flutter', () {
+      final filtered = filterPackages(
+        sdkPackages,
+        config: sdkConfig,
+        criteria: criteria(
+          const FilterAnd([
+            FilterSdk(packageSdkFlutter),
+            FilterMatch(['fake_flutter_dep']),
+          ]),
+        ),
+      );
+
+      expect(names(filtered), isEmpty);
+    });
+
+    test('fromNameGlobs sdk leaf ANDs with other flags', () {
+      final filtered = filterPackages(
+        sdkPackages,
+        config: sdkConfig,
+        criteria: PackageFilterCriteria.fromNameGlobs(
+          sdk: packageSdkFlutter,
+          groups: const ['apps'],
+        ),
+      );
+
+      expect(names(filtered), ['admin', 'mobile']);
+    });
+  });
+}
+
+void _writePubspec(String packageDir, String contents) {
+  Directory(packageDir).createSync(recursive: true);
+  File(p.join(packageDir, 'pubspec.yaml')).writeAsStringSync(contents);
 }

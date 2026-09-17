@@ -100,6 +100,14 @@ class RunCommand extends RippleCommand {
         valueHelp: 'descriptor',
       )
       ..addOption(
+        sdkOptionName,
+        help: 'Only packages whose pubspec environment matches this SDK. '
+            'flutter means environment.flutter is set; dart means it is '
+            'absent. Pass at most once. Valid only for exec: scripts.',
+        valueHelp: 'dart|flutter',
+        allowed: packageSdkValues,
+      )
+      ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
             'Overrides $rippleOverrideEnvVar when both are set.',
@@ -142,6 +150,9 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--changed`.
   static const changedOptionName = 'changed';
+
+  /// Option name for `--sdk`.
+  static const sdkOptionName = 'sdk';
 
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
@@ -207,6 +218,7 @@ class RunCommand extends RippleCommand {
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
+      sdk: argResults!.option(sdkOptionName),
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -238,7 +250,8 @@ class RunCommand extends RippleCommand {
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
           'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
-          '--depends-on, --preset, --changed, and unset $ripplePackagesEnvVar.',
+          '--depends-on, --preset, --changed, --sdk, and unset '
+          '$ripplePackagesEnvVar.',
         );
       }
 

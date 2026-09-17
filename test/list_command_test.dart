@@ -233,6 +233,7 @@ void main() {
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
+      expect(help, contains('--sdk'));
       expect(help, contains('--dependents'));
       expect(help, contains('--dependencies'));
       expect(help, contains('--format'));
@@ -559,6 +560,137 @@ environment:
       };
       expect(byName['ui_kit']!['sdk'], 'flutter');
       expect(byName['core']!['sdk'], 'dart');
+    });
+
+    test('--sdk filters by environment.flutter', () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_sdk_filter_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: sdk_filter
+packages:
+  include:
+    - packages/*
+  groups:
+    apps:
+      - packages/mobile
+      - packages/admin
+''');
+      void writePkg(String dir, String body) {
+        final packageDir = Directory(p.join(temp.path, 'packages', dir))
+          ..createSync(recursive: true);
+        File(p.join(packageDir.path, 'pubspec.yaml')).writeAsStringSync(body);
+      }
+
+      writePkg(
+        'core',
+        '''
+name: core
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      writePkg(
+        'api_client',
+        '''
+name: api_client
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      writePkg(
+        'ui',
+        '''
+name: ui
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      writePkg(
+        'mobile',
+        '''
+name: mobile
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      writePkg(
+        'admin',
+        '''
+name: admin
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      writePkg(
+        'macos_only',
+        '''
+name: macos_only
+environment:
+  sdk: ^3.5.0
+  flutter: '>=3.24.0'
+''',
+      );
+      writePkg(
+        'fake_flutter_dep',
+        '''
+name: fake_flutter_dep
+environment:
+  sdk: ^3.5.0
+dependencies:
+  flutter:
+    sdk: flutter
+''',
+      );
+
+      final dartResult = await runRipple(
+        ['list', '--sdk', 'dart'],
+        workingDirectory: temp.path,
+      );
+      expect(dartResult.exitCode, 0, reason: dartResult.stderr as String);
+      expect(stdoutLines(dartResult), [
+        'packages/api_client',
+        'packages/core',
+        'packages/fake_flutter_dep',
+      ]);
+
+      final flutterResult = await runRipple(
+        ['list', '--sdk', 'flutter'],
+        workingDirectory: temp.path,
+      );
+      expect(flutterResult.exitCode, 0, reason: flutterResult.stderr as String);
+      expect(stdoutLines(flutterResult), [
+        'packages/admin',
+        'packages/macos_only',
+        'packages/mobile',
+        'packages/ui',
+      ]);
+
+      final appsFlutter = await runRipple(
+        ['list', '--sdk', 'flutter', '--group', 'apps'],
+        workingDirectory: temp.path,
+      );
+      expect(appsFlutter.exitCode, 0, reason: appsFlutter.stderr as String);
+      expect(stdoutLines(appsFlutter), [
+        'packages/admin',
+        'packages/mobile',
+      ]);
+    });
+
+    test('unknown --sdk value is a usage error', () async {
+      final result = await runRipple(['list', '--sdk', 'node']);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('sdk'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
     });
   });
 }

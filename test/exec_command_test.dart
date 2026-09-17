@@ -556,16 +556,24 @@ void main() {
           temp.deleteSync(recursive: true);
         }
       });
-      final logFile = File(p.join(temp.path, 'started.log'));
+      final logPrefix = p.join(temp.path, 'timed');
 
-      Future<int> runWithConcurrency(int concurrency) async {
+      ({int start, int end}) readStamp(String name) {
+        final lines = File('$logPrefix.$name').readAsLinesSync();
+        expect(lines, hasLength(2));
+        return (
+          start: int.parse(lines[0].split(' ').last),
+          end: int.parse(lines[1].split(' ').last),
+        );
+      }
+
+      Future<void> runWithConcurrency(int concurrency) async {
         for (final name in ['core', 'ui']) {
-          final stamp = File('${logFile.path}.$name');
+          final stamp = File('$logPrefix.$name');
           if (stamp.existsSync()) {
             stamp.deleteSync();
           }
         }
-        final sw = Stopwatch()..start();
         final result = await runRipple([
           'exec',
           '--concurrency',
@@ -576,19 +584,29 @@ void main() {
           '--match',
           'ui',
           '--',
-          ...probe(['sleep-ms-append', logFile.path, '300']),
+          ...probe(['timed-log', logPrefix, '300']),
         ]);
-        sw.stop();
         expect(result.exitCode, 0, reason: result.stderr as String);
-        expect(File('${logFile.path}.core').existsSync(), isTrue);
-        expect(File('${logFile.path}.ui').existsSync(), isTrue);
-        return sw.elapsedMilliseconds;
       }
 
-      final sequentialMs = await runWithConcurrency(1);
-      final parallelMs = await runWithConcurrency(2);
-      // Parallel should save roughly one sleep interval after process overhead.
-      expect(parallelMs, lessThan(sequentialMs - 150));
+      await runWithConcurrency(1);
+      final sequentialCore = readStamp('core');
+      final sequentialUi = readStamp('ui');
+      // Path order under concurrency 1: core finishes before ui starts.
+      expect(sequentialUi.start, greaterThanOrEqualTo(sequentialCore.end));
+
+      await runWithConcurrency(2);
+      final parallelCore = readStamp('core');
+      final parallelUi = readStamp('ui');
+      // Concurrent work intervals must overlap (second starts before first ends).
+      expect(
+        parallelCore.start < parallelUi.end &&
+            parallelUi.start < parallelCore.end,
+        isTrue,
+        reason: 'expected overlapping intervals under concurrency 2; '
+            'core=${parallelCore.start}-${parallelCore.end} '
+            'ui=${parallelUi.start}-${parallelUi.end}',
+      );
     });
 
     test('without --fail-fast every package still runs under concurrency',

@@ -190,6 +190,34 @@ final class FilterChanged extends FilterExpr {
   int get hashCode => descriptor.hashCode;
 }
 
+/// Allowed YAML / CLI `sdk` filter values (`dart` or `flutter`).
+const packageSdkDart = 'dart';
+
+/// Flutter SDK label when `environment.flutter` is present in pubspec.
+const packageSdkFlutter = 'flutter';
+
+/// Valid values for [FilterSdk] / `--sdk`.
+const packageSdkValues = [packageSdkDart, packageSdkFlutter];
+
+/// Package SDK kind from pubspec `environment` (`dart` or `flutter`).
+///
+/// Flutter means `environment.flutter` is set. A `flutter` SDK dependency
+/// alone does **not** count — that remains a separate `dependsOn` leaf.
+final class FilterSdk extends FilterExpr {
+  /// Creates an `sdk` leaf. [sdk] must be [packageSdkDart] or
+  /// [packageSdkFlutter].
+  const FilterSdk(this.sdk);
+
+  /// Target SDK label (`dart` or `flutter`).
+  final String sdk;
+
+  @override
+  bool operator ==(Object other) => other is FilterSdk && other.sdk == sdk;
+
+  @override
+  int get hashCode => sdk.hashCode;
+}
+
 /// Reference to a named expression under `packages.filtersPresets`.
 ///
 /// Resolved (with cycle detection) before evaluation; see
@@ -1577,7 +1605,7 @@ FilterExpr _filterNodeFromValue(
       'FilterExpr',
       'Invalid filter at $path: expected exactly one key '
           '(and, or, preset, changed, match, noMatch, group, dependsOn, '
-          'dirExists, fileExists), found ${map.length}',
+          'dirExists, fileExists, sdk), found ${map.length}',
     );
   }
   final entry = map.entries.single;
@@ -1668,6 +1696,36 @@ FilterExpr _filterNodeFromValue(
       final descriptor = changedValue.trim();
       parseChangedDescriptor(descriptor);
       return FilterChanged(descriptor);
+    case 'sdk':
+      final sdkValue = entry.value;
+      if (sdkValue is Map || sdkValue is List) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `sdk` must be a string '
+              '(${packageSdkValues.join(' | ')}), not a map or list',
+        );
+      }
+      if (sdkValue is! String) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `sdk` must be a string',
+        );
+      }
+      final sdk = sdkValue.trim();
+      if (!packageSdkValues.contains(sdk)) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `sdk` must be one of: '
+              '${packageSdkValues.join(', ')}',
+        );
+      }
+      return FilterSdk(sdk);
     default:
       throw CheckedFromJsonException(
         parent,
@@ -1675,7 +1733,7 @@ FilterExpr _filterNodeFromValue(
         'FilterExpr',
         'Invalid filter at $path: unknown key "$key". Expected one of: '
             'and, or, preset, changed, match, noMatch, group, dependsOn, '
-            'dirExists, fileExists',
+            'dirExists, fileExists, sdk',
       );
   }
 }

@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:pubspec_parse/pubspec_parse.dart';
 
+import 'config.dart';
 import 'discovery.dart';
 import 'graph.dart';
 
@@ -25,8 +26,13 @@ const listFormatValues = [
 ];
 
 /// `"flutter"` when [pubspec] declares `environment.flutter`, else `"dart"`.
+///
+/// Same signal as [FilterSdk] / `--sdk`. A `flutter` SDK dependency alone
+/// does not make a package Flutter.
 String packageSdkLabel(Pubspec pubspec) {
-  return pubspec.environment.containsKey('flutter') ? 'flutter' : 'dart';
+  return pubspec.environment.containsKey('flutter')
+      ? packageSdkFlutter
+      : packageSdkDart;
 }
 
 /// One JSON object for a selected package (CI matrix / inspect).
