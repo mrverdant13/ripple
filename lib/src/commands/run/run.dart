@@ -99,6 +99,18 @@ class RunCommand extends RippleCommand {
             'only for exec: scripts.',
         valueHelp: 'descriptor',
       )
+      ..addFlag(
+        dependentsFlagName,
+        help: 'Not accepted by ripple run. Use dependentsFilters on an '
+            'exec: script, or ripple list / ripple exec --dependents.',
+        negatable: false,
+      )
+      ..addFlag(
+        dependenciesFlagName,
+        help: 'Not accepted by ripple run. Use dependenciesFilters on an '
+            'exec: script, or ripple list / ripple exec --dependencies.',
+        negatable: false,
+      )
       ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
@@ -143,6 +155,12 @@ class RunCommand extends RippleCommand {
   /// Option name for `--changed`.
   static const changedOptionName = 'changed';
 
+  /// Flag name for `--dependents`.
+  static const dependentsFlagName = 'dependents';
+
+  /// Flag name for `--dependencies`.
+  static const dependenciesFlagName = 'dependencies';
+
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
 
@@ -175,6 +193,17 @@ class RunCommand extends RippleCommand {
     }
 
     final scriptName = rest.first;
+    if (argResults!.flag(dependentsFlagName) ||
+        argResults!.flag(dependenciesFlagName)) {
+      usageException(
+        'Graph expansion flags --$dependentsFlagName and '
+        '--$dependenciesFlagName are only valid for `ripple list` and '
+        '`ripple exec`.\n'
+        'For `ripple run`, declare dependentsFilters / dependenciesFilters '
+        'on an exec: script in ripple.yaml.',
+      );
+    }
+
     final config = loadRippleConfig(
       overlay: resolveOverlayDescriptor(
         cli: argResults!.wasParsed(overrideOptionName)
