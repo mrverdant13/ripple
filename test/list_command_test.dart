@@ -180,8 +180,7 @@ environment:
 ''');
         Directory(p.join(appDir.path, 'lib')).createSync();
         if (withPodfile) {
-          final iosDir = Directory(p.join(appDir.path, 'ios'))
-            ..createSync();
+          final iosDir = Directory(p.join(appDir.path, 'ios'))..createSync();
           File(p.join(iosDir.path, 'Podfile')).writeAsStringSync('# stub');
         }
       }
@@ -193,7 +192,8 @@ environment:
         ['list', '--group', 'apps', '--file-not-exists', 'ios/Podfile'],
         workingDirectory: temp.path,
       );
-      expect(withoutPodfile.exitCode, 0, reason: withoutPodfile.stderr as String);
+      expect(withoutPodfile.exitCode, 0,
+          reason: withoutPodfile.stderr as String);
       expect(stdoutLines(withoutPodfile), ['apps/admin']);
 
       final withLibNoPods = await runRipple(
