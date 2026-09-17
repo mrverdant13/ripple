@@ -80,6 +80,26 @@ Future<void> main(List<String> args) async {
       }
       // Per-package stamp file avoids concurrent append interleaving.
       File('$appendPath.$packageName').writeAsStringSync('ok\n');
+    case 'timed-log':
+      if (args.length < 3) {
+        stderr.writeln('probe timed-log: missing PATH or milliseconds');
+        exit(64);
+      }
+      final logPath = args[1];
+      final sleepMs = int.tryParse(args[2]);
+      if (sleepMs == null || sleepMs < 0) {
+        stderr.writeln('probe timed-log: invalid milliseconds');
+        exit(64);
+      }
+      final packageName = Platform.environment['RIPPLE_PACKAGE_NAME'];
+      if (packageName == null) {
+        exit(1);
+      }
+      final start = DateTime.now().microsecondsSinceEpoch;
+      await Future<void>.delayed(Duration(milliseconds: sleepMs));
+      final end = DateTime.now().microsecondsSinceEpoch;
+      // Per-package stamp avoids concurrent append interleaving.
+      File('$logPath.$packageName').writeAsStringSync('start $start\nend $end\n');
     case 'append-file':
       if (args.length < 3) {
         stderr.writeln('probe append-file: missing PATH or TEXT');
