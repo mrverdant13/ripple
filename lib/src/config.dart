@@ -408,6 +408,7 @@ class RipplePackages {
     this.exclude = const [],
     this.groups = const {},
     this.filtersPresets = const {},
+    this.changedIgnore = const [],
   });
 
   /// Glob patterns (relative to the Ripple root) for candidate package dirs.
@@ -423,6 +424,11 @@ class RipplePackages {
   ///
   /// Each value is a list-form filter expression (implicit [FilterAnd]).
   final Map<String, FilterExpr> filtersPresets;
+
+  /// Repo-relative path globs ignored by `changed` path-to-package mapping.
+  ///
+  /// Matching changed files are dropped before longest-prefix ownership.
+  final List<String> changedIgnore;
 }
 
 /// A filter-scoped overlay of [RippleConfig.replacements].
@@ -1033,6 +1039,7 @@ RipplePackages _packagesFromValue(
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
     groups: _groupsFromValue(map['groups'], map),
     filtersPresets: _filtersPresetsFromValue(map['filtersPresets'], map),
+    changedIgnore: _stringList(map, 'changedIgnore', 'RipplePackages'),
   );
 }
 
