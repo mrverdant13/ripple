@@ -491,8 +491,8 @@ Bare `ripple list` / `ripple exec` are **seed-only by default**. Pass
 forward workspace closure from those seeds (same as YAML
 `dependentsFilters: []` / `dependenciesFilters: []`). Constrained expansion
 (non-empty filter AST) stays YAML-only on `exec:` scripts under `ripple run`.
-`ripple run` rejects the CLI expansion flags — keep graph expansion on scripts
-in `ripple.yaml`.
+Those CLI flags are not options on `ripple run` — declare expansion on the
+script in `ripple.yaml` instead.
 
 Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
 `run` and `exec`, neither, `filters` / expansion keys on a `run:` script, empty
@@ -657,25 +657,24 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--depends-on`, `--preset`, `--changed`, and
-  `RIPPLE_PACKAGES`) are rejected. `--dependents` / `--dependencies`,
-  `--concurrency`, and `--order` are also rejected (a `run:` script has a
-  single root cwd; graph expansion stays YAML-driven). Begin/end stderr
-  root-scope banners use `(root)`; each step also gets command start/end
-  banners stamped with `(root)`.
+  `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
+  rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
+  banners use `(root)`; each step also gets command start/end banners stamped
+  with `(root)`.
 - **`exec:`** — for each matching package, runs all list steps in that package
   (same fail-fast / concurrency / order model as [`ripple exec`](#ripple-exec)).
   Script-declared seed `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
   `dependenciesFilters` expand the set (see
-  [Package selection](#package-selection)). CLI `--dependents` /
-  `--dependencies` are rejected here — use the YAML expansion keys instead.
-  Package path/name/version vars are set in addition to `RIPPLE_ROOT_PATH`.
-  Script `concurrency:` sets the default package parallelism; CLI
-  `--concurrency` overrides it. Script `order:` sets the default schedule;
-  CLI `--order` overrides it. Begin/end stderr package-scope banners use
-  `name @ path` once per package; each step also gets its own command
-  start/end banners stamped with the package name. The package end banner
-  reports that package's exit code.
+  [Package selection](#package-selection)). Graph expansion CLI flags
+  (`--dependents` / `--dependencies`) exist only on `list` / `exec`; on
+  `run`, use the YAML expansion keys. Package path/name/version vars are
+  set in addition to `RIPPLE_ROOT_PATH`. Script `concurrency:` sets the
+  default package parallelism; CLI `--concurrency` overrides it. Script
+  `order:` sets the default schedule; CLI `--order` overrides it. Begin/end
+  stderr package-scope banners use `name @ path` once per package; each
+  step also gets its own command start/end banners stamped with the package
+  name. The package end banner reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 
