@@ -50,6 +50,44 @@ void main() {
       expect(names(filtered), ['ui']);
     });
 
+    test('dirNotExists excludes packages that have that directory', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterDirNotExists(['test'])),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['app', 'ui', 'tool_pkg']);
+    });
+
+    test('fileNotExists excludes packages that have that file', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterFileNotExists(['README.md'])),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['app', 'core', 'tool_pkg']);
+    });
+
+    test('dirNotExists ANDs with dirExists', () {
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(
+          const FilterAnd([
+            FilterDirExists(['lib']),
+            FilterDirNotExists(['test']),
+          ]),
+        ),
+        groupMembership: groups,
+      );
+
+      expect(names(filtered), ['ui']);
+    });
+
     test('dependsOn matches direct dependencies and dev_dependencies', () {
       final byPathDep = filterPackages(
         packages,
@@ -354,6 +392,32 @@ void main() {
         groupMembership: groups,
       );
       expect(names(filtered), ['core']);
+    });
+
+    test('fromNameGlobs not-exists leaves AND with other flags', () {
+      final criteriaWithNotExists = PackageFilterCriteria.fromNameGlobs(
+        dirExists: const ['lib'],
+        dirNotExists: const ['test'],
+        fileNotExists: const ['README.md'],
+      );
+
+      expect(
+        criteriaWithNotExists.expression,
+        const FilterAnd([
+          FilterDirExists(['lib']),
+          FilterDirNotExists(['test']),
+          FilterFileNotExists(['README.md']),
+        ]),
+      );
+
+      final filtered = filterPackages(
+        packages,
+        config: config,
+        criteria: criteriaWithNotExists,
+        groupMembership: groups,
+      );
+      // ui has lib + no test, but has README.md — excluded by fileNotExists
+      expect(names(filtered), isEmpty);
     });
 
     test('resolveFilterPresets expands nested presets', () {

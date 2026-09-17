@@ -1318,6 +1318,37 @@ scripts:
       );
     });
 
+    test('parses dirNotExists and fileNotExists filters on exec scripts', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  pods:
+    exec: pod install --repo-update
+    filters:
+      - fileExists: [ios/Podfile]
+      - dirNotExists: [ios/Pods]
+  noGenerated:
+    exec: dart run build_runner build
+    filters:
+      - fileNotExists: [lib/generated/foo.dart]
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['pods']!.filters,
+        const FilterAnd([
+          FilterFileExists(['ios/Podfile']),
+          FilterDirNotExists(['ios/Pods']),
+        ]),
+      );
+      expect(
+        config.scripts['noGenerated']!.filters,
+        const FilterAnd([
+          FilterFileNotExists(['lib/generated/foo.dart']),
+        ]),
+      );
+    });
+
     test('rejects unknown sdk filter values', () {
       expect(
         () => parseRippleYaml(
