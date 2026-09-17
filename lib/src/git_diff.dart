@@ -203,7 +203,39 @@ Set<String> changedPackageRelativePaths({
   required List<RipplePackage> packages,
   List<String> ignoreGlobs = const [],
 }) {
-  final paths = switch (descriptor) {
+  return changedPackageRelativePathsForDescriptors(
+    rootPath: rootPath,
+    descriptors: [descriptor],
+    packages: packages,
+    ignoreGlobs: ignoreGlobs,
+  );
+}
+
+/// Like [changedPackageRelativePaths], but unions path sets from every
+/// descriptor before longest-prefix ownership mapping.
+Set<String> changedPackageRelativePathsForDescriptors({
+  required String rootPath,
+  required List<ChangedDescriptor> descriptors,
+  required List<RipplePackage> packages,
+  List<String> ignoreGlobs = const [],
+}) {
+  final paths = <String>{
+    for (final descriptor in descriptors)
+      ..._pathsForDescriptor(rootPath: rootPath, descriptor: descriptor),
+  };
+  return mapChangedPathsToPackages(
+    paths: paths,
+    packages: packages,
+    rootPath: rootPath,
+    ignoreGlobs: ignoreGlobs,
+  );
+}
+
+Set<String> _pathsForDescriptor({
+  required String rootPath,
+  required ChangedDescriptor descriptor,
+}) {
+  return switch (descriptor) {
     ChangedSince(:final ref) => _pathsFromGitDiff(
         rootPath: rootPath,
         diffRange: '$ref...HEAD',
@@ -223,12 +255,6 @@ Set<String> changedPackageRelativePaths({
     ChangedUnstaged() => _pathsFromUnstaged(rootPath: rootPath),
     ChangedUntracked() => _pathsFromUntracked(rootPath: rootPath),
   };
-  return mapChangedPathsToPackages(
-    paths: paths,
-    packages: packages,
-    rootPath: rootPath,
-    ignoreGlobs: ignoreGlobs,
-  );
 }
 
 /// Maps changed repo-relative file paths to owning package [relativePath]s.

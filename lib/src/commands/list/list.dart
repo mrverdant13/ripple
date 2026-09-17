@@ -79,11 +79,12 @@ class ListCommand extends RippleCommand {
             'seed filters. May be passed multiple times.',
         valueHelp: 'name',
       )
-      ..addOption(
+      ..addMultiOption(
         changedOptionName,
         help: 'Only packages changed per a git descriptor: since:<ref>, '
-            'range:<A..B>, workdir:<tree-ish>, or bare since-latest-tag / staged / '
-            'unstaged / untracked. Pass at most once.',
+            'range:<A..B>, workdir:<tree-ish>, or bare since-latest-tag / '
+            'staged / unstaged / untracked. May be passed multiple times '
+            '(union of path sets).',
         valueHelp: 'descriptor',
       )
       ..addOption(
@@ -173,17 +174,16 @@ class ListCommand extends RippleCommand {
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
     final format = argResults!.option(formatOptionName) ?? listFormatPaths;
-    final changedRaw = argResults!.option(changedOptionName);
-    String? changed;
-    if (changedRaw != null) {
-      final trimmed = changedRaw.trim();
+    final changed = <String>[];
+    for (final raw in argResults!.multiOption(changedOptionName)) {
+      final trimmed = raw.trim();
       if (trimmed.isEmpty) {
         usageException(
           'Invalid --$changedOptionName: value must be a non-empty descriptor',
         );
       }
       parseChangedDescriptor(trimmed);
-      changed = trimmed;
+      changed.add(trimmed);
     }
 
     final criteria = PackageFilterCriteria.fromNameGlobs(

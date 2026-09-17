@@ -55,7 +55,7 @@ class PackageFilterCriteria {
     List<String> dependsOn = const [],
     List<String> groups = const [],
     List<String> presets = const [],
-    String? changed,
+    List<String> changed = const [],
     String? sdk,
     bool? needsPubGet,
     List<String>? packageNames,
@@ -70,7 +70,7 @@ class PackageFilterCriteria {
       if (match.isNotEmpty) FilterMatch(match),
       if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
       for (final preset in presets) FilterPreset(preset),
-      if (changed != null) FilterChanged(changed),
+      if (changed.isNotEmpty) FilterChanged(changed),
       if (sdk != null) FilterSdk(sdk),
       if (needsPubGet != null) FilterNeedsPubGet(needsPubGet),
     ];
@@ -513,11 +513,14 @@ final class _ChangedFilterMatchContext {
   final Map<String, Set<String>> _cache = {};
 
   Set<String> changedOwners(FilterChanged filter) {
-    return _cache.putIfAbsent(filter.descriptor, () {
-      final descriptor = parseChangedDescriptor(filter.descriptor);
-      return changedPackageRelativePaths(
+    final cacheKey = filter.descriptors.join('\u0000');
+    return _cache.putIfAbsent(cacheKey, () {
+      final parsed = [
+        for (final raw in filter.descriptors) parseChangedDescriptor(raw),
+      ];
+      return changedPackageRelativePathsForDescriptors(
         rootPath: rootPath,
-        descriptor: descriptor,
+        descriptors: parsed,
         packages: mappingPackages,
         ignoreGlobs: ignoreGlobs,
       );
