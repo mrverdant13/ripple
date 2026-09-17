@@ -96,6 +96,9 @@ scripts:
   pkg.concurrency:
     concurrency: 2
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart sleep-ms 300
+  pkg.order:
+    order: layers
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_PACKAGE_NAME
   root.quiet:
     quiet: true
     run: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart echo ok

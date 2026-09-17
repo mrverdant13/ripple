@@ -824,4 +824,100 @@ void main() {
       );
     });
   });
+
+  group('resolvePackageExecOrder', () {
+    test('defaults to path when CLI and script are absent', () {
+      expect(resolvePackageExecOrder(), defaultPackageExecOrder);
+      expect(resolvePackageExecOrder(), PackageExecOrder.path);
+    });
+
+    test('prefers CLI over script order', () {
+      expect(
+        resolvePackageExecOrder(
+          cliOrder: PackageExecOrder.layers,
+          scriptOrder: PackageExecOrder.path,
+        ),
+        PackageExecOrder.layers,
+      );
+      expect(
+        resolvePackageExecOrder(scriptOrder: PackageExecOrder.layers),
+        PackageExecOrder.layers,
+      );
+    });
+
+    test('parses path and layers tokens', () {
+      expect(tryParsePackageExecOrder('path'), PackageExecOrder.path);
+      expect(tryParsePackageExecOrder('layers'), PackageExecOrder.layers);
+      expect(tryParsePackageExecOrder('other'), isNull);
+    });
+  });
+
+  group('runWithLayeredConcurrency', () {
+    test('runs layers sequentially and items within a layer concurrently',
+        () async {
+      final events = <String>[];
+      final exit = await runWithLayeredConcurrency<String>(
+        layers: const [
+          ['a', 'b'],
+          ['c'],
+        ],
+        concurrency: 2,
+        failFast: false,
+        run: (item) async {
+          events.add('$item-start');
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+          events.add('$item-end');
+          return 0;
+        },
+      );
+
+      expect(exit, 0);
+      expect(events.indexOf('a-start'), lessThan(events.indexOf('a-end')));
+      expect(events.indexOf('b-start'), lessThan(events.indexOf('b-end')));
+      expect(events.indexOf('c-start'), greaterThan(events.indexOf('a-end')));
+      expect(events.indexOf('c-start'), greaterThan(events.indexOf('b-end')));
+      expect(events.indexOf('b-start'), lessThan(events.indexOf('a-end')));
+    });
+
+    test('returns earliest failure in flattened layer order', () async {
+      final exit = await runWithLayeredConcurrency<String>(
+        layers: const [
+          ['a', 'b'],
+          ['c'],
+        ],
+        concurrency: 2,
+        failFast: false,
+        run: (item) async {
+          if (item == 'a') {
+            return 3;
+          }
+          if (item == 'c') {
+            return 5;
+          }
+          return 0;
+        },
+      );
+
+      expect(exit, 3);
+    });
+
+    test('fail-fast does not start later layers', () async {
+      final started = <String>[];
+      final exit = await runWithLayeredConcurrency<String>(
+        layers: const [
+          ['a'],
+          ['b'],
+        ],
+        concurrency: 1,
+        failFast: true,
+        run: (item) async {
+          started.add(item);
+          return item == 'a' ? 4 : 0;
+        },
+      );
+
+      expect(exit, 4);
+      expect(started, ['a']);
+    });
+  });
 }

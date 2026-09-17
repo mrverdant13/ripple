@@ -6,6 +6,7 @@ import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
 import 'package:ripple_cli/src/git_diff.dart';
+import 'package:ripple_cli/src/graph.dart';
 import 'package:ripple_cli/src/replacements.dart';
 
 /// {@template ripple_cli.exec_command}
@@ -31,6 +32,13 @@ class ExecCommand extends RippleCommand {
         help: 'Max packages to run at once (default: 1, sequential by '
             'relative path). Must be at least 1.',
         valueHelp: 'n',
+      )
+      ..addOption(
+        orderOptionName,
+        help: 'Package scheduling: path (default, relative-path order) or '
+            'layers (workspace dependencies before dependents).',
+        valueHelp: 'path|layers',
+        allowed: packageExecOrderValues.keys,
       )
       ..addOption(
         groupOptionName,
@@ -98,6 +106,9 @@ class ExecCommand extends RippleCommand {
   /// Option name for `--concurrency`.
   static const concurrencyOptionName = 'concurrency';
 
+  /// Option name for `--order`.
+  static const orderOptionName = 'order';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -131,7 +142,7 @@ class ExecCommand extends RippleCommand {
   @override
   String get invocation =>
       '${runner.executableName} $name [filters…] [--fail-fast] [--quiet] '
-      '[--concurrency <n>] -- <command…>';
+      '[--concurrency <n>] [--order path|layers] -- <command…>';
 
   @override
   Future<void> run() async {
@@ -188,10 +199,14 @@ class ExecCommand extends RippleCommand {
     final failFast = argResults!.flag(failFastFlagName);
     final quiet = resolveQuietMode(cliQuiet: argResults!.flag(quietFlagName));
     final concurrency = _resolveCliConcurrency();
+    final order = _resolveCliOrder();
     final forwardStdin = concurrency == 1;
+    final graph = WorkspaceGraph.fromPackages(packages);
 
-    final firstFailure = await runWithBoundedConcurrency<RipplePackage>(
-      items: filtered,
+    final firstFailure = await runPackagesInOrder(
+      packages: filtered,
+      order: order,
+      graph: graph,
       concurrency: concurrency,
       failFast: failFast,
       run: (package) async {
@@ -273,6 +288,20 @@ class ExecCommand extends RippleCommand {
       );
     }
     return resolveConcurrency(cliConcurrency: parsed);
+  }
+
+  PackageExecOrder _resolveCliOrder() {
+    if (!argResults!.wasParsed(orderOptionName)) {
+      return resolvePackageExecOrder();
+    }
+    final raw = argResults!.option(orderOptionName)!;
+    final parsed = tryParsePackageExecOrder(raw);
+    if (parsed == null) {
+      usageException(
+        'Invalid --$orderOptionName: expected path or layers, got "$raw"',
+      );
+    }
+    return resolvePackageExecOrder(cliOrder: parsed);
   }
 
   /// Exit code used when the child process cannot be started.

@@ -264,6 +264,10 @@ final class GraphExpansionFilters {
 /// Optional [concurrency] bounds how many packages run at once for `exec:`
 /// scripts (`null` means absent → default 1 at run time). Invalid on `run:`
 /// scripts. CLI `--concurrency` wins when both are set.
+///
+/// Optional [order] selects package scheduling for `exec:` (`null` means
+/// absent → `path` at run time). Invalid on `run:` scripts. CLI `--order`
+/// wins when both are set.
 class RippleScript {
   /// Creates a validated script entry.
   const RippleScript({
@@ -276,14 +280,16 @@ class RippleScript {
     this.description,
     this.quiet = false,
     this.concurrency,
+    this.order,
   }) : assert(
           kind == ScriptKind.exec ||
               (filters == null &&
                   dependentsFilters == null &&
                   dependenciesFilters == null &&
-                  concurrency == null),
-          'run: scripts must not declare filters, expansion keys, or '
-          'concurrency',
+                  concurrency == null &&
+                  order == null),
+          'run: scripts must not declare filters, expansion keys, '
+          'concurrency, or order',
         );
 
   /// Key under `scripts:` (may contain dots, e.g. `format.ci`).
@@ -304,6 +310,12 @@ class RippleScript {
   /// `null` means the YAML key is absent (default 1 at run time). Only valid
   /// for [ScriptKind.exec]; must be at least 1 when set.
   final int? concurrency;
+
+  /// Package scheduling for `exec:` (see CLI `--order`).
+  ///
+  /// `null` means the YAML key is absent (default `path` at run time). Only
+  /// valid for [ScriptKind.exec]. Allowed values: `path`, `layers`.
+  final String? order;
 
   /// Command strings from `run:` or `exec:` (string or YAML list).
   ///
@@ -1111,6 +1123,7 @@ RippleScript _scriptFromValue(
   final hasDependentsFilters = map.containsKey('dependentsFilters');
   final hasDependenciesFilters = map.containsKey('dependenciesFilters');
   final hasConcurrency = map.containsKey('concurrency');
+  final hasOrder = map.containsKey('order');
   if (hasRun) {
     if (filtersValue != null) {
       throw CheckedFromJsonException(
@@ -1145,6 +1158,14 @@ RippleScript _scriptFromValue(
         'Script "$name" uses `run:` and must not declare `concurrency`',
       );
     }
+    if (hasOrder) {
+      throw CheckedFromJsonException(
+        map,
+        'order',
+        'RippleScript',
+        'Script "$name" uses `run:` and must not declare `order`',
+      );
+    }
   }
 
   final kindKey = hasRun ? 'run' : 'exec';
@@ -1157,6 +1178,7 @@ RippleScript _scriptFromValue(
   final description = _scriptDescriptionFromValue(map, name);
   final quiet = _scriptQuietFromValue(map, name);
   final concurrency = hasExec ? _scriptConcurrencyFromValue(map, name) : null;
+  final order = hasExec ? _scriptOrderFromValue(map, name) : null;
 
   return RippleScript(
     name: name,
@@ -1165,6 +1187,7 @@ RippleScript _scriptFromValue(
     description: description,
     quiet: quiet,
     concurrency: concurrency,
+    order: order,
     filters: hasExec
         ? _filtersFromValue(
             filtersValue,
@@ -1332,6 +1355,35 @@ int? _scriptConcurrencyFromValue(
     );
   }
   return value;
+}
+
+/// Parses optional `order:` as `path` or `layers` (absent → `null`).
+String? _scriptOrderFromValue(
+  Map<dynamic, dynamic> map,
+  String scriptName,
+) {
+  if (!map.containsKey('order')) {
+    return null;
+  }
+  final value = map['order'];
+  if (value is! String) {
+    throw CheckedFromJsonException(
+      map,
+      'order',
+      'RippleScript',
+      'Script "$scriptName" `order:` must be a string',
+    );
+  }
+  final trimmed = value.trim();
+  if (trimmed != 'path' && trimmed != 'layers') {
+    throw CheckedFromJsonException(
+      map,
+      'order',
+      'RippleScript',
+      'Script "$scriptName" `order:` must be "path" or "layers"',
+    );
+  }
+  return trimmed;
 }
 
 /// Parses a `run:` / `exec:` value as a non-empty string or list of strings.

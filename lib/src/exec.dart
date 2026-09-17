@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'discovery.dart';
+import 'graph.dart';
 
 /// Tracks whether the shared terminal cursor should be at the start of a line.
 ///
@@ -628,6 +629,139 @@ Future<int> runWithBoundedConcurrency<T>({
     for (var i = 0; i < workerCount; i++) worker(),
   ]);
   return earliestFailureExitCode;
+}
+
+/// How packages are ordered for `exec` / `exec:` runs.
+enum PackageExecOrder {
+  /// Stable sort by [RipplePackage.relativePath] (default).
+  path,
+
+  /// Dependency layers: workspace deps finish before dependents; siblings in a
+  /// layer may run in parallel up to `--concurrency`.
+  layers,
+}
+
+/// Default package order when neither CLI nor YAML sets a value.
+const defaultPackageExecOrder = PackageExecOrder.path;
+
+/// Allowed `--order` / YAML `order:` values.
+const packageExecOrderValues = {
+  'path': PackageExecOrder.path,
+  'layers': PackageExecOrder.layers,
+};
+
+/// Parses an `--order` / `order:` token, or returns `null` when unknown.
+PackageExecOrder? tryParsePackageExecOrder(String raw) =>
+    packageExecOrderValues[raw.trim()];
+
+/// Resolves package order for `exec` / `exec:` runs.
+///
+/// [cliOrder] wins when non-null (CLI `--order` was passed). Otherwise
+/// [scriptOrder] from YAML `order:` is used. When both are absent, returns
+/// [defaultPackageExecOrder] (`path`).
+PackageExecOrder resolvePackageExecOrder({
+  PackageExecOrder? cliOrder,
+  PackageExecOrder? scriptOrder,
+}) {
+  return cliOrder ?? scriptOrder ?? defaultPackageExecOrder;
+}
+
+/// Runs [run] over [layers] with at most [concurrency] invocations in flight
+/// **within** each layer. The next layer starts only after the previous layer
+/// has fully finished.
+///
+/// With [failFast], no further items are started after a non-zero exit
+/// (remaining packages in the current layer and later layers). In-flight work
+/// in the current layer may still finish.
+///
+/// Returns `0` when every invocation exits 0; otherwise the exit code of the
+/// earliest failing item in flattened layer order (layer 0, then layer 1, …
+/// and within a layer the input list order).
+Future<int> runWithLayeredConcurrency<T>({
+  required List<List<T>> layers,
+  required int concurrency,
+  required bool failFast,
+  required Future<int> Function(T item) run,
+}) async {
+  if (concurrency < 1) {
+    throw ArgumentError.value(concurrency, 'concurrency', 'must be at least 1');
+  }
+
+  var earliestFailureFlatIndex = -1;
+  var earliestFailureExitCode = 0;
+  var flatOffset = 0;
+  var stopStarting = false;
+
+  for (final layer in layers) {
+    if (stopStarting) {
+      break;
+    }
+    if (layer.isEmpty) {
+      continue;
+    }
+
+    final layerExits = List<int?>.filled(layer.length, null);
+    await runWithBoundedConcurrency<int>(
+      items: List<int>.generate(layer.length, (index) => index),
+      concurrency: concurrency,
+      failFast: failFast,
+      run: (index) async {
+        final exitCode = await run(layer[index]);
+        layerExits[index] = exitCode;
+        return exitCode;
+      },
+    );
+
+    for (var index = 0; index < layer.length; index++) {
+      final exitCode = layerExits[index];
+      if (exitCode == null || exitCode == 0) {
+        continue;
+      }
+      final flatIndex = flatOffset + index;
+      if (earliestFailureFlatIndex < 0 ||
+          flatIndex < earliestFailureFlatIndex) {
+        earliestFailureFlatIndex = flatIndex;
+        earliestFailureExitCode = exitCode;
+      }
+    }
+
+    if (failFast && earliestFailureExitCode != 0) {
+      stopStarting = true;
+    }
+    flatOffset += layer.length;
+  }
+
+  return earliestFailureExitCode;
+}
+
+/// Runs [run] for each selected package using [order].
+///
+/// [PackageExecOrder.path] claims packages in list order (today’s
+/// `relativePath` behavior). [PackageExecOrder.layers] runs
+/// [WorkspaceGraph.executionLayers] with layer barriers; cycle errors from the
+/// graph propagate to the caller.
+Future<int> runPackagesInOrder({
+  required List<RipplePackage> packages,
+  required PackageExecOrder order,
+  required WorkspaceGraph graph,
+  required int concurrency,
+  required bool failFast,
+  required Future<int> Function(RipplePackage package) run,
+}) {
+  if (order == PackageExecOrder.path) {
+    return runWithBoundedConcurrency(
+      items: packages,
+      concurrency: concurrency,
+      failFast: failFast,
+      run: run,
+    );
+  }
+  return runWithLayeredConcurrency(
+    layers: graph.executionLayers(packages),
+    concurrency: concurrency,
+    failFast: failFast,
+    run: run,
+  );
 }
 
 /// Runs [command] as an executable plus arguments.

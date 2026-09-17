@@ -227,6 +227,71 @@ scripts:
       expect(config.scripts['check.ci']!.concurrency, isNull);
     });
 
+    test('parses optional script order on exec:', () {
+      const yaml = '''
+scripts:
+  analyze.ci:
+    order: layers
+    exec: dart analyze .
+  check.ci:
+    exec: dart test
+''';
+
+      final config = parseRippleYaml(yaml, rootPath: '/r');
+
+      expect(config.scripts['analyze.ci']!.order, 'layers');
+      expect(config.scripts['check.ci']!.order, isNull);
+    });
+
+    test('rejects order on run: scripts', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  format.ci:
+    order: layers
+    run: dart format .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('order'),
+              contains('run:'),
+            ),
+          ),
+        ),
+      );
+    });
+
+    test('rejects unknown script order values', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  analyze.ci:
+    order: topo
+    exec: dart analyze .
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('order'),
+              contains('path'),
+              contains('layers'),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('rejects concurrency on run: scripts', () {
       expect(
         () => parseRippleYaml(

@@ -396,6 +396,7 @@ void main() {
       expect(help, contains('--fail-fast'));
       expect(help, contains('--quiet'));
       expect(help, contains('--concurrency'));
+      expect(help, contains('--order'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -640,6 +641,182 @@ void main() {
 
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('at least 1'));
+    });
+
+    test('omitted --order keeps relativePath start order', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('--order path keeps relativePath start order', () async {
+      final result = await runRipple([
+        'exec',
+        '--order',
+        'path',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('--order layers runs dependencies before dependents', () async {
+      final result = await runRipple([
+        'exec',
+        '--order',
+        'layers',
+        '--concurrency',
+        '1',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core', 'ui', 'app']);
+    });
+
+    test('--order layers respects remaining edges in a filtered subset',
+        () async {
+      final result = await runRipple([
+        'exec',
+        '--order',
+        'layers',
+        '--concurrency',
+        '1',
+        '--match',
+        'app',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['ui', 'app']);
+    });
+
+    test('--order layers keeps layer barriers under concurrency', () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_exec_layers_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+      final logPrefix = p.join(temp.path, 'timed');
+
+      final result = await runRipple([
+        'exec',
+        '--order',
+        'layers',
+        '--concurrency',
+        '2',
+        '--quiet',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+        '--',
+        ...probe(['timed-log', logPrefix, '200']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+
+      ({int start, int end}) readStamp(String name) {
+        final lines = File('$logPrefix.$name').readAsLinesSync();
+        expect(lines, hasLength(2));
+        return (
+          start: int.parse(lines[0].split(' ').last),
+          end: int.parse(lines[1].split(' ').last),
+        );
+      }
+
+      final core = readStamp('core');
+      final ui = readStamp('ui');
+      final app = readStamp('app');
+      expect(ui.start, greaterThanOrEqualTo(core.end));
+      expect(app.start, greaterThanOrEqualTo(ui.end));
+    });
+
+    test('--order layers fails on a dependency cycle before running commands',
+        () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_exec_cycle_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: cycle
+packages:
+  include:
+    - packages/*
+''');
+      Directory(p.join(temp.path, 'packages', 'alpha')).createSync(
+        recursive: true,
+      );
+      Directory(p.join(temp.path, 'packages', 'beta')).createSync(
+        recursive: true,
+      );
+      File(p.join(temp.path, 'packages', 'alpha', 'pubspec.yaml'))
+          .writeAsStringSync('''
+name: alpha
+dependencies:
+  beta:
+    path: ../beta
+''');
+      File(p.join(temp.path, 'packages', 'beta', 'pubspec.yaml'))
+          .writeAsStringSync('''
+name: beta
+dependencies:
+  alpha:
+    path: ../alpha
+''');
+      final marker = File(p.join(temp.path, 'ran.txt'));
+
+      final result = await runRipple(
+        [
+          'exec',
+          '--order',
+          'layers',
+          '--',
+          ...probe(['write-file', marker.path, 'ran']),
+        ],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('Dependency cycle detected'));
+      expect(result.stderr, contains('alpha'));
+      expect(result.stderr, contains('beta'));
+      expect(marker.existsSync(), isFalse);
     });
   });
 }

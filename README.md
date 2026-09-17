@@ -350,6 +350,13 @@ once (default **1**, sequential by relative path). `n` must be at least 1.
 Invalid on `run:` scripts. CLI `--concurrency` enables the same behavior and
 wins when both are set.
 
+Optional `order: path | layers` on `exec:` scripts selects package scheduling
+(default **`path`**, today’s relative-path order). With `layers`, workspace
+dependencies finish before dependents; packages in the same layer may run in
+parallel up to `concurrency`. A dependency cycle among the selected packages
+is a hard error (no commands run). Invalid on `run:` scripts. CLI `--order`
+wins when both are set.
+
 The value of `run:` / `exec:` is either a **string** (one command) or a **YAML
 list of strings** (sequential steps). Steps always stop on the first non-zero
 exit. For `exec:` lists, all steps run for a package before that package's work
@@ -375,6 +382,7 @@ scripts:
 
   analyze.ci:
     concurrency: 4
+    order: layers
     exec: dart analyze --fatal-infos --fatal-warnings .
     filters:
       - dirExists: [lib]
@@ -555,7 +563,11 @@ outside any `ripple.yaml` ancestry fails with a config-not-found error.
 Run an ad-hoc command **once per matching package**, with cwd set to each
 package directory. Pass the executable and its arguments after `--`. Default
 concurrency is **1** (sequential by relative path). Use `--concurrency <n>` to
-run up to `n` packages at once (`n` must be at least 1).
+run up to `n` packages at once (`n` must be at least 1). Default order is
+**`path`** (relative-path sort). Use `--order layers` so workspace dependencies
+finish before dependents; packages in the same layer may still overlap up to
+`--concurrency`. A selected-package dependency cycle fails with a clear error
+and runs no commands.
 
 Each package is wrapped in begin/end stderr banners using that package's
 pubspec name and relative path (`name @ path`). Inside that block, Ripple also
@@ -590,6 +602,7 @@ ripple exec --group libs -- dart test
 ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-changed .
 ripple exec --quiet -- dart analyze --fatal-infos --fatal-warnings .
 ripple exec --concurrency 4 -- dart analyze --fatal-infos --fatal-warnings .
+ripple exec --order layers --concurrency 4 -- dart analyze --fatal-infos --fatal-warnings .
 ```
 
 Quoting each `{{key}}` token is required in PowerShell and optional in
@@ -602,11 +615,12 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 | `--fail-fast` | Stop starting packages after the first non-zero exit. In-flight packages may still finish when `--concurrency` is greater than 1. |
 | `--quiet` | Omit banners and child stdout/stderr for packages that exit 0. Failed packages still print banners and output. |
 | `--concurrency` | Max packages to run at once (default: `1`). Must be at least 1. |
+| `--order` | Package scheduling: `path` (default, relative-path order) or `layers` (workspace dependencies before dependents). |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Without `--fail-fast`, every selected package still runs; the overall exit code
-is the first non-zero package exit in relative-path order (or `0` when all
-succeed).
+is the first non-zero package exit in schedule order (`path`: relative-path
+order; `layers`: flattened layer order) or `0` when all succeed.
 
 Missing `--` / an empty command fails with a usage error.
 
@@ -621,6 +635,7 @@ ripple run analyze.ci --group libs
 ripple run analyze.ci --match core --match ui --fail-fast
 ripple run check.ci --quiet
 ripple run analyze.ci --concurrency 4
+ripple run analyze.ci --order layers --concurrency 4
 ```
 
 Behavior depends on the script kind:
@@ -630,18 +645,19 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--depends-on`, `--preset`, `--changed`, and
-  `RIPPLE_PACKAGES`) are rejected. `--concurrency` is also rejected (a `run:`
-  script has a single root cwd). Begin/end stderr root-scope banners use
-  `(root)`; each step also gets command start/end banners stamped with
-  `(root)`.
+  `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
+  rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
+  banners use `(root)`; each step also gets command start/end banners stamped
+  with `(root)`.
 - **`exec:`** — for each matching package, runs all list steps in that package
-  (same fail-fast / concurrency model as [`ripple exec`](#ripple-exec)).
+  (same fail-fast / concurrency / order model as [`ripple exec`](#ripple-exec)).
   Script-declared seed `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
   `dependenciesFilters` expand the set (see
   [Package selection](#package-selection)). Package path/name/version vars are
   set in addition to `RIPPLE_ROOT_PATH`. Script `concurrency:` sets the default
-  package parallelism; CLI `--concurrency` overrides it. Begin/end stderr
+  package parallelism; CLI `--concurrency` overrides it. Script `order:` sets
+  the default schedule; CLI `--order` overrides it. Begin/end stderr
   package-scope banners use `name @ path` once per package; each step also gets
   its own command start/end banners stamped with the package name. The package
   end banner reports that package's exit code.
@@ -653,6 +669,7 @@ Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 | `--fail-fast` | For `exec:` scripts, stop starting packages after the first non-zero exit. In-flight packages may still finish when `--concurrency` is greater than 1. |
 | `--quiet` | Omit banners and child stdout/stderr for successful packages (`exec:`) or successful root steps (`run:`). Failed packages or steps still print banners and output. Overrides script `quiet:` when both are set. |
 | `--concurrency` | For `exec:` scripts, max packages to run at once (default: `1`, or script `concurrency:`). Must be at least 1. Rejected for `run:` scripts. Overrides script `concurrency:` when both are set. |
+| `--order` | For `exec:` scripts, package scheduling: `path` (default, or script `order:`) or `layers`. Rejected for `run:` scripts. Overrides script `order:` when both are set. |
 | `--override` | Overlay descriptor: `none`, `default`, or `file:<path>`. Overrides `RIPPLE_OVERRIDE`. |
 
 Unknown script names fail with a clear error that lists available scripts.
