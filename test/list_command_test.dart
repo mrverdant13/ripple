@@ -127,8 +127,7 @@ void main() {
     });
 
     test('--no-file-exists narrows the printed set', () async {
-      final result =
-          await runRipple(['list', '--no-file-exists', 'README.md']);
+      final result = await runRipple(['list', '--no-file-exists', 'README.md']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [
@@ -151,8 +150,7 @@ void main() {
       expect(stdoutLines(result), ['packages/core']);
     });
 
-    test('--no-file-exists matches packages missing a relative file',
-        () async {
+    test('--no-file-exists matches packages missing a relative file', () async {
       final temp =
           Directory.systemTemp.createTempSync('ripple_list_not_exists_');
       addTearDown(() {
