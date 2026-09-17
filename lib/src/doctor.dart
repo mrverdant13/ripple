@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import 'config.dart';
 import 'discovery.dart';
@@ -160,9 +161,8 @@ bool isExecutableOnPath(
 
   final pathSep = Platform.isWindows ? ';' : ':';
   final pathEnv = environment['PATH'] ?? environment['Path'] ?? '';
-  final extensions = Platform.isWindows
-      ? _windowsPathExts(environment)
-      : const <String>[''];
+  final extensions =
+      Platform.isWindows ? _windowsPathExts(environment) : const <String>[''];
 
   bool existsWithExts(String base) {
     for (final ext in extensions) {
@@ -174,7 +174,9 @@ bool isExecutableOnPath(
     return false;
   }
 
-  if (p.isAbsolute(executable) || executable.contains(r'\') || executable.contains('/')) {
+  if (p.isAbsolute(executable) ||
+      executable.contains(r'\') ||
+      executable.contains('/')) {
     return existsWithExts(executable);
   }
 
@@ -366,8 +368,10 @@ DoctorFinding? _resolutionMixFinding(List<RipplePackage> packages) {
   final withWorkspace = <String>[];
   final withoutWorkspace = <String>[];
   for (final package in packages) {
-    final pubspec = resolvePackagePubspec(package);
-    if (pubspec.resolution == 'workspace') {
+    // Read `resolution:` from YAML directly. `Pubspec.resolution` exists only
+    // in newer pubspec_parse versions (SDK ^3.6+), which cannot resolve on the
+    // package min SDK (3.5).
+    if (_pubspecResolution(package) == 'workspace') {
       withWorkspace.add(package.relativePath);
     } else {
       withoutWorkspace.add(package.relativePath);
@@ -381,10 +385,32 @@ DoctorFinding? _resolutionMixFinding(List<RipplePackage> packages) {
   return DoctorFinding(
     id: doctorFindingResolutionMix,
     severity: DoctorSeverity.warning,
-    message:
-        'mixed resolution: workspace (${withWorkspace.join(', ')}) vs '
+    message: 'mixed resolution: workspace (${withWorkspace.join(', ')}) vs '
         'other (${withoutWorkspace.join(', ')})',
   );
+}
+
+/// Top-level `resolution:` value from [package]'s `pubspec.yaml`, if present.
+String? _pubspecResolution(RipplePackage package) {
+  final file = File(p.join(package.path, 'pubspec.yaml'));
+  late final String contents;
+  try {
+    contents = file.readAsStringSync();
+  } on FileSystemException {
+    return null;
+  }
+
+  late final Object? document;
+  try {
+    document = loadYaml(contents);
+  } on Object {
+    return null;
+  }
+  if (document is! YamlMap) {
+    return null;
+  }
+  final value = document['resolution'];
+  return value is String ? value : null;
 }
 
 /// Repo-relative posix paths of directories that contain `pubspec.yaml`.

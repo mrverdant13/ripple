@@ -152,7 +152,8 @@ packages:
       expect(configUsesChangedFilters(loadConfig(temp)), isTrue);
       final report = runDoctor(loadConfig(temp));
       expect(
-        report.findings.singleWhere((f) => f.id == doctorFindingGitMissing)
+        report.findings
+            .singleWhere((f) => f.id == doctorFindingGitMissing)
             .severity,
         DoctorSeverity.error,
       );
@@ -256,7 +257,8 @@ packages:
         ],
       );
 
-      final decoded = jsonDecode(formatDoctorJson(report)) as Map<String, Object?>;
+      final decoded =
+          jsonDecode(formatDoctorJson(report)) as Map<String, Object?>;
       expect(decoded['packageCount'], 1);
       final findings = decoded['findings'] as List<Object?>;
       expect(findings, hasLength(1));
@@ -281,7 +283,8 @@ packages:
       expect(isGitCheckout(temp.path), isTrue);
       Directory(p.join(temp.path, '.git')).deleteSync(recursive: true);
 
-      File(p.join(temp.path, '.git')).writeAsStringSync('gitdir: /tmp/elsewhere');
+      File(p.join(temp.path, '.git'))
+          .writeAsStringSync('gitdir: /tmp/elsewhere');
       expect(isGitCheckout(temp.path), isTrue);
     });
   });

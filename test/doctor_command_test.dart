@@ -88,7 +88,8 @@ packages:
       final result = await runRipple(['doctor'], workingDirectory: temp.path);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
-      expect(result.stdout, contains('warning  include.missed  scratch/orphan'));
+      expect(
+          result.stdout, contains('warning  include.missed  scratch/orphan'));
     });
 
     test('git.missing with changed filters exits 1', () async {
