@@ -437,7 +437,7 @@ scripts:
 | `group` | string | Package must be in that `packages.groups` entry |
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
-| `changed` | single descriptor string | Package had path changes per git (see below) |
+| `changed` | descriptor string **or** list of strings | Package had path changes per git (see below); list = union |
 | `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
 | `needsPubGet` | boolean | `true` = `.dart_tool/package_config.json` missing or older than that package's `pubspec.yaml` / `pubspec.lock`; `false` = complement |
 
@@ -461,8 +461,16 @@ scripts:
 There is no built-in `analyze` command. Prefer a script such as
 `{{dart}} analyze --no-pub` when packages are already resolved.
 
-`changed` accepts **one** descriptor (not a list). Combine modes with `or:`,
-not multiple values on the same leaf:
+`changed` accepts a **string** or a **non-empty list** of descriptor strings.
+A list (and repeatable CLI `--changed`) is a **union** of path sets, then
+longest-prefix mapped to packages. Combining with `or:` remains valid:
+
+```yaml
+filters:
+  - changed:
+      - since:origin/main
+      - workdir:HEAD
+```
 
 | Descriptor | Meaning |
 | --- | --- |
@@ -586,6 +594,7 @@ ripple list --sdk flutter --group apps
 ripple list --needs-pub-get
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
+ripple list --changed since:origin/main --changed workdir:HEAD
 ripple list --match core --dependents
 ripple list --match app --dependencies
 ripple list --changed since:origin/main --dependents
@@ -605,7 +614,7 @@ ripple list --changed since:origin/main --dependents
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
 | `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
-| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Pass at most once. |
+| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Repeatable; values are a union. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
 
