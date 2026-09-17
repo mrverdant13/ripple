@@ -738,6 +738,16 @@ void main() {
     test('CLI --concurrency overrides script concurrency: 2', () async {
       // Sequential override path is asserted in the overlap test above.
       // Keep an explicit override smoke check.
+      final stamp = File(p.join(fixtureRoot, '.concurrency_stamp.core'));
+      if (stamp.existsSync()) {
+        stamp.deleteSync();
+      }
+      addTearDown(() {
+        if (stamp.existsSync()) {
+          stamp.deleteSync();
+        }
+      });
+
       final result = await runRipple([
         'run',
         '--concurrency',
