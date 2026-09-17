@@ -89,6 +89,18 @@ class ExecCommand extends RippleCommand {
             'range:<A..B>, or workdir:<tree-ish>. Pass at most once.',
         valueHelp: 'descriptor',
       )
+      ..addFlag(
+        dependentsFlagName,
+        help: 'Include transitive workspace dependents of the seed packages '
+            '(exhaustive reverse closure).',
+        negatable: false,
+      )
+      ..addFlag(
+        dependenciesFlagName,
+        help: 'Include transitive workspace dependencies of the seed '
+            'packages (exhaustive forward closure).',
+        negatable: false,
+      )
       ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
@@ -133,6 +145,12 @@ class ExecCommand extends RippleCommand {
   /// Option name for `--changed`.
   static const changedOptionName = 'changed';
 
+  /// Flag name for `--dependents`.
+  static const dependentsFlagName = 'dependents';
+
+  /// Flag name for `--dependencies`.
+  static const dependenciesFlagName = 'dependencies';
+
   @override
   String get name => 'exec';
 
@@ -142,7 +160,8 @@ class ExecCommand extends RippleCommand {
   @override
   String get invocation =>
       '${runner.executableName} $name [filters…] [--fail-fast] [--quiet] '
-      '[--concurrency <n>] [--order path|layers] -- <command…>';
+      '[--concurrency <n>] [--order path|layers] [--dependents] '
+      '[--dependencies] -- <command…>';
 
   @override
   Future<void> run() async {
@@ -189,12 +208,17 @@ class ExecCommand extends RippleCommand {
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 
-    final filtered = filterPackages(
+    final expandDependents = argResults!.flag(dependentsFlagName);
+    final expandDependencies = argResults!.flag(dependenciesFlagName);
+    final filtered = selectPackages(
       packages,
       config: config,
       criteria: criteria,
-      packagesForChangedMapping: packages,
-    );
+      dependentsFilters:
+          expandDependents ? const GraphExpansionFilters() : null,
+      dependenciesFilters:
+          expandDependencies ? const GraphExpansionFilters() : null,
+    ).packages;
 
     final failFast = argResults!.flag(failFastFlagName);
     final quiet = resolveQuietMode(cliQuiet: argResults!.flag(quietFlagName));
