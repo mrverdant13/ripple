@@ -72,6 +72,18 @@ class ListCommand extends RippleCommand {
         help: 'Only packages changed per a git descriptor: since:<ref>, '
             'range:<A..B>, or workdir:<tree-ish>. Pass at most once.',
         valueHelp: 'descriptor',
+      )
+      ..addFlag(
+        dependentsFlagName,
+        help: 'Include transitive workspace dependents of the seed packages '
+            '(exhaustive reverse closure).',
+        negatable: false,
+      )
+      ..addFlag(
+        dependenciesFlagName,
+        help: 'Include transitive workspace dependencies of the seed '
+            'packages (exhaustive forward closure).',
+        negatable: false,
       );
   }
 
@@ -101,6 +113,12 @@ class ListCommand extends RippleCommand {
 
   /// Option name for `--changed`.
   static const changedOptionName = 'changed';
+
+  /// Flag name for `--dependents`.
+  static const dependentsFlagName = 'dependents';
+
+  /// Flag name for `--dependencies`.
+  static const dependenciesFlagName = 'dependencies';
 
   @override
   String get name => 'list';
@@ -141,12 +159,17 @@ class ListCommand extends RippleCommand {
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
 
-    final filtered = filterPackages(
+    final expandDependents = argResults!.flag(dependentsFlagName);
+    final expandDependencies = argResults!.flag(dependenciesFlagName);
+    final filtered = selectPackages(
       packages,
       config: config,
       criteria: criteria,
-      packagesForChangedMapping: packages,
-    );
+      dependentsFilters:
+          expandDependents ? const GraphExpansionFilters() : null,
+      dependenciesFilters:
+          expandDependencies ? const GraphExpansionFilters() : null,
+    ).packages;
 
     switch (format) {
       case listFormatPaths:

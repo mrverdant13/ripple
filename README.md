@@ -486,9 +486,13 @@ package. Hosted deps whose name is not in the workspace are ignored. Closures
 are transitive and exclude the seed packages themselves (seeds remain via the
 seed set).
 
-Bare `ripple list` / `ripple exec` are **seed-only** — they never expand
-dependents or dependencies. Graph expansion is script YAML only (`ripple run`
-with an `exec:` script).
+Bare `ripple list` / `ripple exec` are **seed-only by default**. Pass
+`--dependents` and/or `--dependencies` for an exhaustive reverse and/or
+forward workspace closure from those seeds (same as YAML
+`dependentsFilters: []` / `dependenciesFilters: []`). Constrained expansion
+(non-empty filter AST) stays YAML-only on `exec:` scripts under `ripple run`.
+Those CLI flags are not options on `ripple run` — declare expansion on the
+script in `ripple.yaml` instead.
 
 Map-form filters (a YAML map of leaf keys) are rejected. Invalid configs (both
 `run` and `exec`, neither, `filters` / expansion keys on a `run:` script, empty
@@ -506,9 +510,10 @@ when needed (`ripple run format.ci && ripple run analyze.ci`).
 
 Print packages discovered from `packages.include` / `packages.exclude`, after
 optional seed filters. Default output is one relative path per line (relative
-to the Ripple root), sorted for stable review. Does **not** expand dependents
-or dependencies (use an `exec:` script with expansion keys under
-[`ripple run`](#ripple-run)).
+to the Ripple root), sorted for stable review. Optional `--dependents` /
+`--dependencies` expand the seed set with exhaustive workspace closures (see
+[Package selection](#package-selection)). Constrained expansion remains
+YAML-only on `exec:` scripts under [`ripple run`](#ripple-run).
 
 ```bash
 ripple list
@@ -524,6 +529,9 @@ ripple list --depends-on path
 ripple list --preset e2eTestable
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
+ripple list --match core --dependents
+ripple list --match app --dependencies
+ripple list --changed since:origin/main --dependents
 ```
 
 | Flag | Description |
@@ -537,6 +545,8 @@ ripple list --changed workdir:HEAD
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
+| `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
+| `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
 
 `--format paths` matches the default (one relative path per line). `--format
 json` prints a JSON array of objects, stable by `path`, with:
@@ -603,12 +613,14 @@ ripple exec --match core --match ui --fail-fast -- dart format --set-exit-if-cha
 ripple exec --quiet -- dart analyze --fatal-infos --fatal-warnings .
 ripple exec --concurrency 4 -- dart analyze --fatal-infos --fatal-warnings .
 ripple exec --order layers --concurrency 4 -- dart analyze --fatal-infos --fatal-warnings .
+ripple exec --match core --dependents -- dart test
 ```
 
 Quoting each `{{key}}` token is required in PowerShell and optional in
 bash and cmd. See [Shell quoting](#shell-quoting).
 
-Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
+Uses the same filter flags as [`ripple list`](#ripple-list) (including
+`--dependents` / `--dependencies`). Additional flags:
 
 | Flag | Description |
 | --- | --- |
@@ -654,13 +666,15 @@ Behavior depends on the script kind:
   Script-declared seed `filters` are intersected with CLI filters and
   `RIPPLE_PACKAGES`, then optional `dependentsFilters` /
   `dependenciesFilters` expand the set (see
-  [Package selection](#package-selection)). Package path/name/version vars are
-  set in addition to `RIPPLE_ROOT_PATH`. Script `concurrency:` sets the default
-  package parallelism; CLI `--concurrency` overrides it. Script `order:` sets
-  the default schedule; CLI `--order` overrides it. Begin/end stderr
-  package-scope banners use `name @ path` once per package; each step also gets
-  its own command start/end banners stamped with the package name. The package
-  end banner reports that package's exit code.
+  [Package selection](#package-selection)). Graph expansion CLI flags
+  (`--dependents` / `--dependencies`) exist only on `list` / `exec`; on
+  `run`, use the YAML expansion keys. Package path/name/version vars are
+  set in addition to `RIPPLE_ROOT_PATH`. Script `concurrency:` sets the
+  default package parallelism; CLI `--concurrency` overrides it. Script
+  `order:` sets the default schedule; CLI `--order` overrides it. Begin/end
+  stderr package-scope banners use `name @ path` once per package; each
+  step also gets its own command start/end banners stamped with the package
+  name. The package end banner reports that package's exit code.
 
 Uses the same filter flags as [`ripple list`](#ripple-list). Additional flags:
 

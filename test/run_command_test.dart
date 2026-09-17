@@ -542,6 +542,8 @@ void main() {
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--override'));
+      expect(help, isNot(contains('--dependents')));
+      expect(help, isNot(contains('--dependencies')));
     });
 
     test('--quiet suppresses banners and output for successful run: scripts',
@@ -641,6 +643,32 @@ void main() {
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('does not accept'));
       expect(result.stderr, contains('--concurrency'));
+    });
+
+    test('--dependents is not a run option', () async {
+      final result = await runRipple([
+        'run',
+        'root.pwd',
+        '--dependents',
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('dependents'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
+    });
+
+    test('--dependencies is not a run option', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.name',
+        '--dependencies',
+        '--match',
+        'core',
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('dependencies'));
+      expect(result.stderr, isNot(contains('Unhandled exception')));
     });
 
     test('script concurrency: overlaps package work for exec:', () async {
