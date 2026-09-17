@@ -50,6 +50,8 @@ class PackageFilterCriteria {
     List<String> noMatch = const [],
     List<String> dirExists = const [],
     List<String> fileExists = const [],
+    List<String> noDirExists = const [],
+    List<String> noFileExists = const [],
     List<String> dependsOn = const [],
     List<String> groups = const [],
     List<String> presets = const [],
@@ -60,6 +62,8 @@ class PackageFilterCriteria {
     final leaves = <FilterExpr>[
       if (dirExists.isNotEmpty) FilterDirExists(dirExists),
       if (fileExists.isNotEmpty) FilterFileExists(fileExists),
+      if (noDirExists.isNotEmpty) FilterNoDirExists(noDirExists),
+      if (noFileExists.isNotEmpty) FilterNoFileExists(noFileExists),
       if (dependsOn.isNotEmpty) FilterDependsOn(dependsOn),
       for (final group in groups) FilterGroup(group),
       if (match.isNotEmpty) FilterMatch(match),
@@ -183,6 +187,8 @@ FilterExpr resolveFilterPresets(
       ),
     FilterDirExists() ||
     FilterFileExists() ||
+    FilterNoDirExists() ||
+    FilterNoFileExists() ||
     FilterDependsOn() ||
     FilterGroup() ||
     FilterMatch() ||
@@ -477,6 +483,8 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterGroup(:final name) => {name},
     FilterDirExists() ||
     FilterFileExists() ||
+    FilterNoDirExists() ||
+    FilterNoFileExists() ||
     FilterDependsOn() ||
     FilterMatch() ||
     FilterNoMatch() ||
@@ -540,6 +548,8 @@ bool _matchesExpression(
       ),
     FilterDirExists(:final paths) => _matchesDirExists(package, paths),
     FilterFileExists(:final paths) => _matchesFileExists(package, paths),
+    FilterNoDirExists(:final paths) => _matchesNoDirExists(package, paths),
+    FilterNoFileExists(:final paths) => _matchesNoFileExists(package, paths),
     FilterDependsOn(:final names) =>
       _matchesDependsOn(package, names, pubspecCache),
     FilterGroup(:final name) =>
@@ -604,6 +614,26 @@ bool _matchesFileExists(RipplePackage package, List<String> relativeFiles) {
   for (final relativeFile in relativeFiles) {
     final file = File(p.join(package.path, relativeFile));
     if (!file.existsSync()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _matchesNoDirExists(RipplePackage package, List<String> relativeDirs) {
+  for (final relativeDir in relativeDirs) {
+    final dir = Directory(p.join(package.path, relativeDir));
+    if (dir.existsSync()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool _matchesNoFileExists(RipplePackage package, List<String> relativeFiles) {
+  for (final relativeFile in relativeFiles) {
+    final file = File(p.join(package.path, relativeFile));
+    if (file.existsSync()) {
       return false;
     }
   }

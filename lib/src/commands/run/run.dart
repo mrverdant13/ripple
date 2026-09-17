@@ -79,6 +79,18 @@ class RunCommand extends RippleCommand {
         valueHelp: 'path',
       )
       ..addMultiOption(
+        noDirExistsOptionName,
+        help: 'Only packages that do not contain this relative directory. '
+            'May be passed multiple times (AND). Valid only for exec: scripts.',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
+        noFileExistsOptionName,
+        help: 'Only packages that do not contain this relative file. '
+            'May be passed multiple times (AND). Valid only for exec: scripts.',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
         dependsOnOptionName,
         help: 'Only packages that declare this direct dependency '
             '(dependencies or dev_dependencies). May be passed multiple '
@@ -141,6 +153,12 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--file-exists`.
   static const fileExistsOptionName = 'file-exists';
+
+  /// Option name for `--no-dir-exists`.
+  static const noDirExistsOptionName = 'no-dir-exists';
+
+  /// Option name for `--no-file-exists`.
+  static const noFileExistsOptionName = 'no-file-exists';
 
   /// Option name for `--depends-on`.
   static const dependsOnOptionName = 'depends-on';
@@ -214,6 +232,8 @@ class RunCommand extends RippleCommand {
       noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
+      noDirExists: argResults!.multiOption(noDirExistsOptionName),
+      noFileExists: argResults!.multiOption(noFileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
@@ -250,7 +270,8 @@ class RunCommand extends RippleCommand {
           'Script "$scriptName" is a run: script and does not accept package '
           'filters.\n'
           'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
-          '--depends-on, --preset, --changed, --sdk, and unset '
+          '--no-dir-exists, --no-file-exists, --depends-on, --preset, '
+          '--changed, --sdk, and unset '
           '$ripplePackagesEnvVar.',
         );
       }

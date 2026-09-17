@@ -539,6 +539,8 @@ void main() {
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
+      expect(help, contains('--no-dir-exists'));
+      expect(help, contains('--no-file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--override'));

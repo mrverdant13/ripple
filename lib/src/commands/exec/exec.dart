@@ -71,6 +71,18 @@ class ExecCommand extends RippleCommand {
         valueHelp: 'path',
       )
       ..addMultiOption(
+        noDirExistsOptionName,
+        help: 'Only packages that do not contain this relative directory. '
+            'May be passed multiple times (AND).',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
+        noFileExistsOptionName,
+        help: 'Only packages that do not contain this relative file. '
+            'May be passed multiple times (AND).',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
         dependsOnOptionName,
         help: 'Only packages that declare this direct dependency '
             '(dependencies or dev_dependencies). May be passed multiple '
@@ -144,6 +156,12 @@ class ExecCommand extends RippleCommand {
   /// Option name for `--file-exists`.
   static const fileExistsOptionName = 'file-exists';
 
+  /// Option name for `--no-dir-exists`.
+  static const noDirExistsOptionName = 'no-dir-exists';
+
+  /// Option name for `--no-file-exists`.
+  static const noFileExistsOptionName = 'no-file-exists';
+
   /// Option name for `--depends-on`.
   static const dependsOnOptionName = 'depends-on';
 
@@ -211,6 +229,8 @@ class ExecCommand extends RippleCommand {
       noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
+      noDirExists: argResults!.multiOption(noDirExistsOptionName),
+      noFileExists: argResults!.multiOption(noFileExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),

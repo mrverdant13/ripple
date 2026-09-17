@@ -174,10 +174,10 @@ All behavior changes should include or update tests.
 Prioritize coverage for:
 
 - Glob include/exclude and package discovery
-- Filter combos (`dirExists`, `fileExists`, `dependsOn`, `group`, `match` /
-  `noMatch`, `sdk`, nested `and` / `or`, `preset` / `packages.filtersPresets`,
-  `--match` / `--no-match` / `--preset` / `--sdk`, `RIPPLE_PACKAGES`) and rejection of
-  map-form `filters`
+- Filter combos (`dirExists`, `fileExists`, `noDirExists`, `noFileExists`,
+  `dependsOn`, `group`, `match` / `noMatch`, `sdk`, nested `and` / `or`,
+  `preset` / `packages.filtersPresets`, `--match` / `--no-match` / `--preset` /
+  `--sdk`, `RIPPLE_PACKAGES`) and rejection of map-form `filters`
 - Graph expansion on `exec:` scripts (`dependentsFilters` /
   `dependenciesFilters`: absent vs `[]` vs constrained AST; workspace-only
   edges; transitive forward/reverse closures; `RIPPLE_PACKAGES` seed narrowing;

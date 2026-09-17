@@ -115,6 +115,99 @@ void main() {
       expect(stdoutLines(result), ['packages/ui']);
     });
 
+    test('--no-dir-exists narrows the printed set', () async {
+      final result = await runRipple(['list', '--no-dir-exists', 'test']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/ui',
+        'tool',
+      ]);
+    });
+
+    test('--no-file-exists narrows the printed set', () async {
+      final result = await runRipple(['list', '--no-file-exists', 'README.md']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'tool',
+      ]);
+    });
+
+    test('--no-file-exists ANDs with --dir-exists', () async {
+      final result = await runRipple([
+        'list',
+        '--dir-exists',
+        'lib',
+        '--no-file-exists',
+        'README.md',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
+    test('--no-file-exists matches packages missing a relative file', () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_not_exists_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: not_exists
+packages:
+  include:
+    - apps/*
+  groups:
+    apps:
+      - apps/*
+''');
+      void writeApp(String name, {required bool withPodfile}) {
+        final appDir = Directory(p.join(temp.path, 'apps', name))
+          ..createSync(recursive: true);
+        File(p.join(appDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: $name
+environment:
+  sdk: ^3.5.0
+''');
+        Directory(p.join(appDir.path, 'lib')).createSync();
+        if (withPodfile) {
+          final iosDir = Directory(p.join(appDir.path, 'ios'))..createSync();
+          File(p.join(iosDir.path, 'Podfile')).writeAsStringSync('# stub');
+        }
+      }
+
+      writeApp('mobile', withPodfile: true);
+      writeApp('admin', withPodfile: false);
+
+      final withoutPodfile = await runRipple(
+        ['list', '--group', 'apps', '--no-file-exists', 'ios/Podfile'],
+        workingDirectory: temp.path,
+      );
+      expect(withoutPodfile.exitCode, 0,
+          reason: withoutPodfile.stderr as String);
+      expect(stdoutLines(withoutPodfile), ['apps/admin']);
+
+      final withLibNoPods = await runRipple(
+        [
+          'list',
+          '--dir-exists',
+          'lib',
+          '--no-dir-exists',
+          'ios/Pods',
+        ],
+        workingDirectory: temp.path,
+      );
+      expect(withLibNoPods.exitCode, 0, reason: withLibNoPods.stderr as String);
+      expect(stdoutLines(withLibNoPods), ['apps/admin', 'apps/mobile']);
+    });
+
     test('--depends-on narrows the printed set', () async {
       final result = await runRipple(['list', '--depends-on', 'core']);
 
@@ -231,6 +324,8 @@ void main() {
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
+      expect(help, contains('--no-dir-exists'));
+      expect(help, contains('--no-file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--sdk'));

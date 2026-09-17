@@ -422,6 +422,7 @@ scripts:
 | `and` / `or` | list of filter nodes | Boolean combination |
 | `preset` | string | Expand `packages.filtersPresets.<name>` in place |
 | `dirExists` / `fileExists` | list of relative paths | Every path must exist (AND) |
+| `noDirExists` / `noFileExists` | list of relative paths | Every path must be absent (AND) |
 | `dependsOn` | list of package names | Every name must be a direct dep (AND) |
 | `group` | string | Package must be in that `packages.groups` entry |
 | `match` | list of name globs | Package name matches any glob (OR) |
@@ -458,8 +459,8 @@ fragments only — they cannot declare expansion keys
 distinct from top-level `packages.include` / `packages.exclude`, which match
 relative package paths. CLI flat flags (`--match`, `--dir-exists`, …) build an
 in-memory `and` of the same leaf kinds. CLI `--preset` ANDs named presets into
-that seed expression. CLI `--no-match` follows the `--no-<filter>` /
-`no<Filter>` negation pattern.
+that seed expression. CLI `--no-match`, `--no-dir-exists`, and
+`--no-file-exists` follow the `--no-<filter>` / `no<Filter>` negation pattern.
 
 ### Package selection
 
@@ -531,6 +532,8 @@ ripple list --match core --match ui
 ripple list --no-match '*_test'
 ripple list --dir-exists test
 ripple list --file-exists README.md
+ripple list --no-dir-exists ios/Pods
+ripple list --no-file-exists ios/Podfile
 ripple list --depends-on path
 ripple list --preset e2eTestable
 ripple list --sdk dart
@@ -550,6 +553,8 @@ ripple list --changed since:origin/main --dependents
 | `--no-match <glob>` | Exclude packages whose name matches this glob (repeatable, OR). |
 | `--dir-exists <path>` | Only packages that contain this relative directory (repeatable, AND). |
 | `--file-exists <path>` | Only packages that contain this relative file (repeatable, AND). |
+| `--no-dir-exists <path>` | Only packages that do not contain this relative directory (repeatable, AND). |
+| `--no-file-exists <path>` | Only packages that do not contain this relative file (repeatable, AND). |
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
@@ -665,7 +670,8 @@ Behavior depends on the script kind:
   Only `RIPPLE_ROOT_PATH` is set. Package-scoped `RIPPLE_PACKAGE_*` variables
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
-  `--file-exists`, `--depends-on`, `--preset`, `--changed`, `--sdk`, and
+  `--file-exists`, `--no-dir-exists`, `--no-file-exists`, `--depends-on`,
+  `--preset`, `--changed`, `--sdk`, and
   `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
   rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
   banners use `(root)`; each step also gets command start/end banners stamped
