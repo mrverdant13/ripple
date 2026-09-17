@@ -73,6 +73,14 @@ class ListCommand extends RippleCommand {
             'range:<A..B>, or workdir:<tree-ish>. Pass at most once.',
         valueHelp: 'descriptor',
       )
+      ..addOption(
+        sdkOptionName,
+        help: 'Only packages whose pubspec environment matches this SDK. '
+            'flutter means environment.flutter is set; dart means it is '
+            'absent. Pass at most once.',
+        valueHelp: 'dart|flutter',
+        allowed: packageSdkValues,
+      )
       ..addFlag(
         dependentsFlagName,
         help: 'Include transitive workspace dependents of the seed packages '
@@ -113,6 +121,9 @@ class ListCommand extends RippleCommand {
 
   /// Option name for `--changed`.
   static const changedOptionName = 'changed';
+
+  /// Option name for `--sdk`.
+  static const sdkOptionName = 'sdk';
 
   /// Flag name for `--dependents`.
   static const dependentsFlagName = 'dependents';
@@ -155,6 +166,7 @@ class ListCommand extends RippleCommand {
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
+      sdk: argResults!.option(sdkOptionName),
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
