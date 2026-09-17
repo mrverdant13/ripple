@@ -110,6 +110,38 @@ final class FilterFileExists extends FilterExpr {
   int get hashCode => Object.hashAll(paths);
 }
 
+/// Relative directory paths that must all be absent under the package root.
+final class FilterDirNotExists extends FilterExpr {
+  /// Creates a `dirNotExists` leaf.
+  const FilterDirNotExists(this.paths);
+
+  /// Relative directory paths (AND within the list).
+  final List<String> paths;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterDirNotExists && _listEquals(paths, other.paths);
+
+  @override
+  int get hashCode => Object.hashAll(paths);
+}
+
+/// Relative file paths that must all be absent under the package root.
+final class FilterFileNotExists extends FilterExpr {
+  /// Creates a `fileNotExists` leaf.
+  const FilterFileNotExists(this.paths);
+
+  /// Relative file paths (AND within the list).
+  final List<String> paths;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterFileNotExists && _listEquals(paths, other.paths);
+
+  @override
+  int get hashCode => Object.hashAll(paths);
+}
+
 /// Direct dependency names that must all appear in the package pubspec.
 final class FilterDependsOn extends FilterExpr {
   /// Creates a `dependsOn` leaf.
@@ -1605,7 +1637,8 @@ FilterExpr _filterNodeFromValue(
       'FilterExpr',
       'Invalid filter at $path: expected exactly one key '
           '(and, or, preset, changed, match, noMatch, group, dependsOn, '
-          'dirExists, fileExists, sdk), found ${map.length}',
+          'dirExists, fileExists, dirNotExists, fileNotExists, sdk), '
+          'found ${map.length}',
     );
   }
   final entry = map.entries.single;
@@ -1629,6 +1662,12 @@ FilterExpr _filterNodeFromValue(
       return FilterDirExists(_filterStringList(entry.value, parent, path, key));
     case 'fileExists':
       return FilterFileExists(
+          _filterStringList(entry.value, parent, path, key));
+    case 'dirNotExists':
+      return FilterDirNotExists(
+          _filterStringList(entry.value, parent, path, key));
+    case 'fileNotExists':
+      return FilterFileNotExists(
           _filterStringList(entry.value, parent, path, key));
     case 'dependsOn':
       return FilterDependsOn(_filterStringList(entry.value, parent, path, key));
@@ -1733,7 +1772,7 @@ FilterExpr _filterNodeFromValue(
         'FilterExpr',
         'Invalid filter at $path: unknown key "$key". Expected one of: '
             'and, or, preset, changed, match, noMatch, group, dependsOn, '
-            'dirExists, fileExists, sdk',
+            'dirExists, fileExists, dirNotExists, fileNotExists, sdk',
       );
   }
 }

@@ -55,6 +55,18 @@ class ListCommand extends RippleCommand {
         valueHelp: 'path',
       )
       ..addMultiOption(
+        dirNotExistsOptionName,
+        help: 'Only packages that do not contain this relative directory. '
+            'May be passed multiple times (AND).',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
+        fileNotExistsOptionName,
+        help: 'Only packages that do not contain this relative file. '
+            'May be passed multiple times (AND).',
+        valueHelp: 'path',
+      )
+      ..addMultiOption(
         dependsOnOptionName,
         help: 'Only packages that declare this direct dependency '
             '(dependencies or dev_dependencies). May be passed multiple '
@@ -113,6 +125,12 @@ class ListCommand extends RippleCommand {
   /// Option name for `--file-exists`.
   static const fileExistsOptionName = 'file-exists';
 
+  /// Option name for `--dir-not-exists`.
+  static const dirNotExistsOptionName = 'dir-not-exists';
+
+  /// Option name for `--file-not-exists`.
+  static const fileNotExistsOptionName = 'file-not-exists';
+
   /// Option name for `--depends-on`.
   static const dependsOnOptionName = 'depends-on';
 
@@ -162,6 +180,8 @@ class ListCommand extends RippleCommand {
       noMatch: argResults!.multiOption(noMatchOptionName),
       dirExists: argResults!.multiOption(dirExistsOptionName),
       fileExists: argResults!.multiOption(fileExistsOptionName),
+      dirNotExists: argResults!.multiOption(dirNotExistsOptionName),
+      fileNotExists: argResults!.multiOption(fileNotExistsOptionName),
       dependsOn: argResults!.multiOption(dependsOnOptionName),
       groups: group == null ? const [] : [group],
       presets: argResults!.multiOption(presetOptionName),
