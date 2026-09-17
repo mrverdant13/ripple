@@ -497,13 +497,16 @@ when needed (`ripple run format.ci && ripple run analyze.ci`).
 ### `ripple list`
 
 Print packages discovered from `packages.include` / `packages.exclude`, after
-optional seed filters. Output is one relative path per line (relative to the
-Ripple root), sorted for stable review. Does **not** expand dependents or
-dependencies (use an `exec:` script with expansion keys under
+optional seed filters. Default output is one relative path per line (relative
+to the Ripple root), sorted for stable review. Does **not** expand dependents
+or dependencies (use an `exec:` script with expansion keys under
 [`ripple run`](#ripple-run)).
 
 ```bash
 ripple list
+ripple list --format paths
+ripple list --format json
+ripple list --format mermaid
 ripple list --group libs
 ripple list --match core --match ui
 ripple list --no-match '*_test'
@@ -517,6 +520,7 @@ ripple list --changed workdir:HEAD
 
 | Flag | Description |
 | --- | --- |
+| `--format <format>` | Output shape: `paths` (default), `json`, or `mermaid`. |
 | `--group <name>` | Only packages in that named `packages.groups` entry. |
 | `--match <glob>` | Only packages whose name matches this glob (repeatable, OR). |
 | `--no-match <glob>` | Exclude packages whose name matches this glob (repeatable, OR). |
@@ -525,6 +529,22 @@ ripple list --changed workdir:HEAD
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
+
+`--format paths` matches the default (one relative path per line). `--format
+json` prints a JSON array of objects, stable by `path`, with:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | Pubspec package name |
+| `path` | Path relative to the Ripple root |
+| `version` | Pubspec `version` string, or `null` when absent |
+| `sdk` | `"flutter"` when `environment.flutter` is set, otherwise `"dart"` |
+| `workspaceDependencies` | Direct workspace dependency **names** (hosted deps omitted) |
+| `workspaceDependents` | Direct workspace dependent **names** |
+
+`--format mermaid` prints a `flowchart TD` of **workspace** edges among the
+selected packages. Every selected package is a node (including isolates with
+no edges). Unknown `--format` values are a usage error.
 
 `RIPPLE_PACKAGES` (comma-separated **exact** package names, not globs)
 intersects with `--match` / `--no-match` and every other active filter. Running

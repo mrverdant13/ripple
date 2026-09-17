@@ -5,6 +5,8 @@ import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/filters.dart';
 import 'package:ripple_cli/src/git_diff.dart';
+import 'package:ripple_cli/src/graph.dart';
+import 'package:ripple_cli/src/list_format.dart';
 
 /// {@template ripple_cli.list_command}
 /// `ripple list` — print packages matching discovery and filter criteria.
@@ -13,6 +15,15 @@ class ListCommand extends RippleCommand {
   /// {@macro ripple_cli.list_command}
   ListCommand() {
     argParser
+      ..addOption(
+        formatOptionName,
+        allowed: listFormatValues,
+        defaultsTo: listFormatPaths,
+        help: 'Output format: paths (default, one relative path per line), '
+            'json (array of package objects), or mermaid (workspace '
+            'dependency flowchart).',
+        valueHelp: 'format',
+      )
       ..addOption(
         groupOptionName,
         help: 'Only packages that belong to this named group from '
@@ -64,6 +75,9 @@ class ListCommand extends RippleCommand {
       );
   }
 
+  /// Option name for `--format`.
+  static const formatOptionName = 'format';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -100,6 +114,7 @@ class ListCommand extends RippleCommand {
     final config = loadRippleConfig();
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
+    final format = argResults!.option(formatOptionName) ?? listFormatPaths;
     final changedRaw = argResults!.option(changedOptionName);
     String? changed;
     if (changedRaw != null) {
@@ -133,8 +148,22 @@ class ListCommand extends RippleCommand {
       packagesForChangedMapping: packages,
     );
 
-    for (final package in filtered) {
-      stdout.writeln(package.relativePath);
+    switch (format) {
+      case listFormatPaths:
+        for (final package in filtered) {
+          stdout.writeln(package.relativePath);
+        }
+      case listFormatJson:
+        final graph = WorkspaceGraph.fromPackages(packages);
+        stdout.writeln(formatPackageListJson(filtered, graph));
+      case listFormatMermaid:
+        final graph = WorkspaceGraph.fromPackages(packages);
+        stdout.write(formatPackageListMermaid(filtered, graph));
+      default:
+        usageException(
+          'Invalid --$formatOptionName: "$format". '
+          'Allowed: ${listFormatValues.join(', ')}',
+        );
     }
   }
 }
