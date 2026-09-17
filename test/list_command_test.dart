@@ -563,7 +563,8 @@ environment:
     });
 
     test('--sdk filters by environment.flutter', () async {
-      final temp = Directory.systemTemp.createTempSync('ripple_list_sdk_filter_');
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_sdk_filter_');
       addTearDown(() {
         if (temp.existsSync()) {
           temp.deleteSync(recursive: true);
