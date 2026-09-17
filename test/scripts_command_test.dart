@@ -58,6 +58,7 @@ void main() {
         'pkg.fail  exec',
         'pkg.filtered  exec',
         'pkg.name  exec',
+        'pkg.order  exec',
         'pkg.preset  exec',
         'pkg.quiet  exec',
         'pkg.steps  exec',

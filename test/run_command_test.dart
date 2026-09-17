@@ -533,6 +533,7 @@ void main() {
       expect(help, contains('--fail-fast'));
       expect(help, contains('--quiet'));
       expect(help, contains('--concurrency'));
+      expect(help, contains('--order'));
       expect(help, contains('--group'));
       expect(help, contains('--match'));
       expect(help, contains('--no-match'));
@@ -680,6 +681,57 @@ void main() {
       ]);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
+    });
+
+    test('rejects --order on run: scripts', () async {
+      final result = await runRipple([
+        'run',
+        '--order',
+        'layers',
+        'root.pwd',
+      ]);
+
+      expect(result.exitCode, isNot(0));
+      expect(result.stderr, contains('does not accept'));
+      expect(result.stderr, contains('--order'));
+    });
+
+    test('script order: layers runs dependencies before dependents', () async {
+      final result = await runRipple([
+        'run',
+        'pkg.order',
+        '--concurrency',
+        '1',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['core', 'ui', 'app']);
+    });
+
+    test('CLI --order overrides script order: layers', () async {
+      final result = await runRipple([
+        'run',
+        '--order',
+        'path',
+        'pkg.order',
+        '--concurrency',
+        '1',
+        '--match',
+        'app',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
     });
   });
 }

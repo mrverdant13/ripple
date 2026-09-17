@@ -6,6 +6,7 @@ import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/exec.dart';
 import 'package:ripple_cli/src/filters.dart';
 import 'package:ripple_cli/src/git_diff.dart';
+import 'package:ripple_cli/src/graph.dart';
 import 'package:ripple_cli/src/replacements.dart';
 import 'package:ripple_cli/src/scripts.dart';
 
@@ -36,6 +37,14 @@ class RunCommand extends RippleCommand {
             'Must be at least 1. Overrides script concurrency: when both are '
             'set. Rejected for run: scripts.',
         valueHelp: 'n',
+      )
+      ..addOption(
+        orderOptionName,
+        help: 'For exec: scripts, package scheduling: path (default) or '
+            'layers. Overrides script order: when both are set. Rejected for '
+            'run: scripts.',
+        valueHelp: 'path|layers',
+        allowed: packageExecOrderValues.keys,
       )
       ..addOption(
         groupOptionName,
@@ -107,6 +116,9 @@ class RunCommand extends RippleCommand {
   /// Option name for `--concurrency`.
   static const concurrencyOptionName = 'concurrency';
 
+  /// Option name for `--order`.
+  static const orderOptionName = 'order';
+
   /// Option name for `--group`.
   static const groupOptionName = 'group';
 
@@ -143,7 +155,7 @@ class RunCommand extends RippleCommand {
   @override
   String get invocation =>
       '${runner.executableName} $name <script> [filters…] [--fail-fast] '
-      '[--quiet] [--concurrency <n>]';
+      '[--quiet] [--concurrency <n>] [--order path|layers]';
 
   @override
   Future<void> run() async {
@@ -158,7 +170,7 @@ class RunCommand extends RippleCommand {
       usageException(
         'Unexpected arguments: ${rest.skip(1).join(' ')}.\n'
         'Usage: ripple run <script> [filters…] [--fail-fast] [--quiet] '
-        '[--concurrency <n>]',
+        '[--concurrency <n>] [--order path|layers]',
       );
     }
 
@@ -204,6 +216,7 @@ class RunCommand extends RippleCommand {
       scriptQuiet: script.quiet,
     );
     final cliConcurrencyParsed = argResults!.wasParsed(concurrencyOptionName);
+    final cliOrderParsed = argResults!.wasParsed(orderOptionName);
 
     if (script.kind == ScriptKind.run) {
       if (cliConcurrencyParsed) {
@@ -211,6 +224,13 @@ class RunCommand extends RippleCommand {
           'Script "$scriptName" is a run: script and does not accept '
           '--$concurrencyOptionName.\n'
           'Remove --$concurrencyOptionName.',
+        );
+      }
+      if (cliOrderParsed) {
+        usageException(
+          'Script "$scriptName" is a run: script and does not accept '
+          '--$orderOptionName.\n'
+          'Remove --$orderOptionName.',
         );
       }
       if (!cliCriteria.isEmpty) {
@@ -301,10 +321,14 @@ class RunCommand extends RippleCommand {
 
     final failFast = argResults!.flag(failFastFlagName);
     final concurrency = _resolveCliConcurrency(script.concurrency);
+    final order = _resolveCliOrder(script.order);
     final forwardStdin = concurrency == 1;
+    final graph = WorkspaceGraph.fromPackages(discovered);
 
-    final firstFailure = await runWithBoundedConcurrency<RipplePackage>(
-      items: packages,
+    final firstFailure = await runPackagesInOrder(
+      packages: packages,
+      order: order,
+      graph: graph,
       concurrency: concurrency,
       failFast: failFast,
       run: (package) async {
@@ -428,6 +452,26 @@ class RunCommand extends RippleCommand {
     return resolveConcurrency(
       cliConcurrency: parsed,
       scriptConcurrency: scriptConcurrency,
+    );
+  }
+
+  PackageExecOrder _resolveCliOrder(String? scriptOrderRaw) {
+    final scriptOrder = scriptOrderRaw == null
+        ? null
+        : tryParsePackageExecOrder(scriptOrderRaw);
+    if (!argResults!.wasParsed(orderOptionName)) {
+      return resolvePackageExecOrder(scriptOrder: scriptOrder);
+    }
+    final raw = argResults!.option(orderOptionName)!;
+    final parsed = tryParsePackageExecOrder(raw);
+    if (parsed == null) {
+      usageException(
+        'Invalid --$orderOptionName: expected path or layers, got "$raw"',
+      );
+    }
+    return resolvePackageExecOrder(
+      cliOrder: parsed,
+      scriptOrder: scriptOrder,
     );
   }
 
