@@ -672,32 +672,72 @@ void main() {
     });
 
     test('script concurrency: overlaps package work for exec:', () async {
-      Future<int> runWithConcurrencyFlag(String? concurrency) async {
-        final sw = Stopwatch()..start();
-        final result = await runRipple([
-          'run',
-          if (concurrency != null) ...['--concurrency', concurrency],
-          'pkg.concurrency',
-          '--quiet',
-          '--match',
-          'core',
-          '--match',
-          'ui',
-        ]);
-        sw.stop();
-        expect(result.exitCode, 0, reason: result.stderr as String);
-        return sw.elapsedMilliseconds;
+      final stampPrefix = p.join(fixtureRoot, '.concurrency_stamp');
+
+      ({int start, int end}) readStamp(String name) {
+        final lines = File('$stampPrefix.$name').readAsLinesSync();
+        expect(lines, hasLength(2));
+        return (
+          start: int.parse(lines[0].split(' ').last),
+          end: int.parse(lines[1].split(' ').last),
+        );
       }
 
-      // YAML concurrency: 2 vs forced CLI concurrency: 1.
-      final parallelMs = await runWithConcurrencyFlag(null);
-      final sequentialMs = await runWithConcurrencyFlag('1');
-      expect(parallelMs, lessThan(sequentialMs - 150));
+      void clearStamps() {
+        for (final name in ['core', 'ui']) {
+          final stamp = File('$stampPrefix.$name');
+          if (stamp.existsSync()) {
+            stamp.deleteSync();
+          }
+        }
+      }
+
+      addTearDown(clearStamps);
+
+      clearStamps();
+      final sequential = await runRipple([
+        'run',
+        '--concurrency',
+        '1',
+        'pkg.concurrency',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+      ]);
+      expect(sequential.exitCode, 0, reason: sequential.stderr as String);
+      final sequentialCore = readStamp('core');
+      final sequentialUi = readStamp('ui');
+      expect(sequentialUi.start, greaterThanOrEqualTo(sequentialCore.end));
+
+      clearStamps();
+      // YAML concurrency: 2 (no CLI override).
+      final parallel = await runRipple([
+        'run',
+        'pkg.concurrency',
+        '--quiet',
+        '--match',
+        'core',
+        '--match',
+        'ui',
+      ]);
+      expect(parallel.exitCode, 0, reason: parallel.stderr as String);
+      final parallelCore = readStamp('core');
+      final parallelUi = readStamp('ui');
+      expect(
+        parallelCore.start < parallelUi.end &&
+            parallelUi.start < parallelCore.end,
+        isTrue,
+        reason: 'expected overlapping intervals under script concurrency: 2; '
+            'core=${parallelCore.start}-${parallelCore.end} '
+            'ui=${parallelUi.start}-${parallelUi.end}',
+      );
     });
 
     test('CLI --concurrency overrides script concurrency: 2', () async {
-      // Covered by the timing comparison above (null uses YAML 2; '1' forces
-      // sequential). Keep an explicit override smoke check.
+      // Sequential override path is asserted in the overlap test above.
+      // Keep an explicit override smoke check.
       final result = await runRipple([
         'run',
         '--concurrency',

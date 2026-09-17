@@ -95,7 +95,7 @@ scripts:
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart fail-if RIPPLE_PACKAGE_NAME=core --exit 3 --print-env RIPPLE_PACKAGE_NAME
   pkg.concurrency:
     concurrency: 2
-    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart sleep-ms 300
+    exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart timed-log $RIPPLE_ROOT_PATH/.concurrency_stamp 300
   pkg.order:
     order: layers
     exec: dart $RIPPLE_ROOT_PATH/../../helpers/probe.dart env RIPPLE_PACKAGE_NAME
