@@ -245,9 +245,9 @@ packages:
     });
 
     test('formatDoctorJson encodes findings', () {
-      final report = DoctorReport(
+      const report = DoctorReport(
         packageCount: 1,
-        findings: const [
+        findings: [
           DoctorFinding(
             id: doctorFindingIncludeMissed,
             severity: DoctorSeverity.warning,
