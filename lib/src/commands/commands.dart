@@ -1,6 +1,7 @@
 /// Base type and runner for Ripple CLI commands.
 library;
 
+export 'doctor/doctor.dart';
 export 'exec/exec.dart';
 export 'list/list.dart';
 export 'ripple_command.dart';
