@@ -50,36 +50,36 @@ void main() {
       expect(names(filtered), ['ui']);
     });
 
-    test('dirNotExists excludes packages that have that directory', () {
+    test('noDirExists excludes packages that have that directory', () {
       final filtered = filterPackages(
         packages,
         config: config,
-        criteria: criteria(const FilterDirNotExists(['test'])),
+        criteria: criteria(const FilterNoDirExists(['test'])),
         groupMembership: groups,
       );
 
       expect(names(filtered), ['app', 'ui', 'tool_pkg']);
     });
 
-    test('fileNotExists excludes packages that have that file', () {
+    test('noFileExists excludes packages that have that file', () {
       final filtered = filterPackages(
         packages,
         config: config,
-        criteria: criteria(const FilterFileNotExists(['README.md'])),
+        criteria: criteria(const FilterNoFileExists(['README.md'])),
         groupMembership: groups,
       );
 
       expect(names(filtered), ['app', 'core', 'tool_pkg']);
     });
 
-    test('dirNotExists ANDs with dirExists', () {
+    test('noDirExists ANDs with dirExists', () {
       final filtered = filterPackages(
         packages,
         config: config,
         criteria: criteria(
           const FilterAnd([
             FilterDirExists(['lib']),
-            FilterDirNotExists(['test']),
+            FilterNoDirExists(['test']),
           ]),
         ),
         groupMembership: groups,
@@ -397,16 +397,16 @@ void main() {
     test('fromNameGlobs not-exists leaves AND with other flags', () {
       final criteriaWithNotExists = PackageFilterCriteria.fromNameGlobs(
         dirExists: const ['lib'],
-        dirNotExists: const ['test'],
-        fileNotExists: const ['README.md'],
+        noDirExists: const ['test'],
+        noFileExists: const ['README.md'],
       );
 
       expect(
         criteriaWithNotExists.expression,
         const FilterAnd([
           FilterDirExists(['lib']),
-          FilterDirNotExists(['test']),
-          FilterFileNotExists(['README.md']),
+          FilterNoDirExists(['test']),
+          FilterNoFileExists(['README.md']),
         ]),
       );
 
@@ -416,7 +416,7 @@ void main() {
         criteria: criteriaWithNotExists,
         groupMembership: groups,
       );
-      // ui has lib + no test, but has README.md — excluded by fileNotExists
+      // ui has lib + no test, but has README.md — excluded by noFileExists
       expect(names(filtered), isEmpty);
     });
 

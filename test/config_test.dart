@@ -1318,7 +1318,7 @@ scripts:
       );
     });
 
-    test('parses dirNotExists and fileNotExists filters on exec scripts', () {
+    test('parses noDirExists and noFileExists filters on exec scripts', () {
       final config = parseRippleYaml(
         '''
 scripts:
@@ -1326,11 +1326,11 @@ scripts:
     exec: pod install --repo-update
     filters:
       - fileExists: [ios/Podfile]
-      - dirNotExists: [ios/Pods]
+      - noDirExists: [ios/Pods]
   noGenerated:
     exec: dart run build_runner build
     filters:
-      - fileNotExists: [lib/generated/foo.dart]
+      - noFileExists: [lib/generated/foo.dart]
 ''',
         rootPath: '/r',
       );
@@ -1338,13 +1338,13 @@ scripts:
         config.scripts['pods']!.filters,
         const FilterAnd([
           FilterFileExists(['ios/Podfile']),
-          FilterDirNotExists(['ios/Pods']),
+          FilterNoDirExists(['ios/Pods']),
         ]),
       );
       expect(
         config.scripts['noGenerated']!.filters,
         const FilterAnd([
-          FilterFileNotExists(['lib/generated/foo.dart']),
+          FilterNoFileExists(['lib/generated/foo.dart']),
         ]),
       );
     });

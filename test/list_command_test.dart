@@ -115,8 +115,8 @@ void main() {
       expect(stdoutLines(result), ['packages/ui']);
     });
 
-    test('--dir-not-exists narrows the printed set', () async {
-      final result = await runRipple(['list', '--dir-not-exists', 'test']);
+    test('--no-dir-exists narrows the printed set', () async {
+      final result = await runRipple(['list', '--no-dir-exists', 'test']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [
@@ -126,9 +126,9 @@ void main() {
       ]);
     });
 
-    test('--file-not-exists narrows the printed set', () async {
+    test('--no-file-exists narrows the printed set', () async {
       final result =
-          await runRipple(['list', '--file-not-exists', 'README.md']);
+          await runRipple(['list', '--no-file-exists', 'README.md']);
 
       expect(result.exitCode, 0, reason: result.stderr as String);
       expect(stdoutLines(result), [
@@ -138,12 +138,12 @@ void main() {
       ]);
     });
 
-    test('--file-not-exists ANDs with --dir-exists', () async {
+    test('--no-file-exists ANDs with --dir-exists', () async {
       final result = await runRipple([
         'list',
         '--dir-exists',
         'lib',
-        '--file-not-exists',
+        '--no-file-exists',
         'README.md',
       ]);
 
@@ -151,7 +151,7 @@ void main() {
       expect(stdoutLines(result), ['packages/core']);
     });
 
-    test('--file-not-exists matches packages missing a relative file',
+    test('--no-file-exists matches packages missing a relative file',
         () async {
       final temp =
           Directory.systemTemp.createTempSync('ripple_list_not_exists_');
@@ -189,7 +189,7 @@ environment:
       writeApp('admin', withPodfile: false);
 
       final withoutPodfile = await runRipple(
-        ['list', '--group', 'apps', '--file-not-exists', 'ios/Podfile'],
+        ['list', '--group', 'apps', '--no-file-exists', 'ios/Podfile'],
         workingDirectory: temp.path,
       );
       expect(withoutPodfile.exitCode, 0,
@@ -201,7 +201,7 @@ environment:
           'list',
           '--dir-exists',
           'lib',
-          '--dir-not-exists',
+          '--no-dir-exists',
           'ios/Pods',
         ],
         workingDirectory: temp.path,
@@ -326,8 +326,8 @@ environment:
       expect(help, contains('--no-match'));
       expect(help, contains('--dir-exists'));
       expect(help, contains('--file-exists'));
-      expect(help, contains('--dir-not-exists'));
-      expect(help, contains('--file-not-exists'));
+      expect(help, contains('--no-dir-exists'));
+      expect(help, contains('--no-file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--sdk'));
