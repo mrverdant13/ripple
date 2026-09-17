@@ -404,7 +404,37 @@ void main() {
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
+      expect(help, contains('--dependents'));
+      expect(help, contains('--dependencies'));
       expect(help, contains('--override'));
+    });
+
+    test('--dependents expands packages before running', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'core',
+        '--dependents',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
+    });
+
+    test('--dependencies expands packages before running', () async {
+      final result = await runRipple([
+        'exec',
+        '--match',
+        'app',
+        '--dependencies',
+        '--',
+        ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['app', 'core', 'ui']);
     });
 
     test('--quiet suppresses banners and output when all packages succeed',

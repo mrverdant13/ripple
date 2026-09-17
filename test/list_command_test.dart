@@ -233,10 +233,183 @@ void main() {
       expect(help, contains('--file-exists'));
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
+      expect(help, contains('--dependents'));
+      expect(help, contains('--dependencies'));
       expect(help, contains('--format'));
       expect(help, contains('paths'));
       expect(help, contains('json'));
       expect(help, contains('mermaid'));
+    });
+
+    test('without expansion flags stays seed-only', () async {
+      final result = await runRipple(['list', '--match', 'core']);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
+    test('--dependents expands the reverse workspace closure', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        'core',
+        '--dependents',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
+    });
+
+    test('--dependencies with a leaf seed stays seed-only', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        'core',
+        '--dependencies',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/core']);
+    });
+
+    test('--dependencies expands the forward workspace closure', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        'app',
+        '--dependencies',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
+    });
+
+    test('--dependents and --dependencies union both closures', () async {
+      final result = await runRipple([
+        'list',
+        '--match',
+        'ui',
+        '--dependents',
+        '--dependencies',
+      ]);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
+    });
+
+    test('RIPPLE_PACKAGES narrows seeds before --dependents expansion',
+        () async {
+      final result = await runRipple(
+        ['list', '--dependents'],
+        environment: const {'RIPPLE_PACKAGES': 'core'},
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
+    });
+
+    test('--changed with --dependents expands from changed seeds', () async {
+      final temp = Directory.systemTemp.createTempSync('ripple_list_changed_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: changed_expand
+packages:
+  include:
+    - packages/*
+''');
+      for (final entry in [
+        ('core', null),
+        ('ui', 'core'),
+        ('app', 'ui'),
+      ]) {
+        final dir = Directory(p.join(temp.path, 'packages', entry.$1))
+          ..createSync(recursive: true);
+        final deps = entry.$2 == null
+            ? ''
+            : '''
+dependencies:
+  ${entry.$2}:
+''';
+        File(p.join(dir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: ${entry.$1}
+environment:
+  sdk: ^3.5.0
+$deps
+''');
+        File(p.join(dir.path, 'lib', 'x.dart'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// ${entry.$1}\n');
+      }
+
+      Future<void> git(List<String> args) async {
+        final result = await Process.run(
+          'git',
+          args,
+          workingDirectory: temp.path,
+          runInShell: false,
+        );
+        expect(
+          result.exitCode,
+          0,
+          reason: 'git ${args.join(' ')}: ${result.stderr}',
+        );
+      }
+
+      await git(['init']);
+      await git(['config', 'user.email', 'test@test.com']);
+      await git(['config', 'user.name', 'test']);
+      await git(['add', '.']);
+      await git(['commit', '-m', 'initial']);
+      await git(['branch', '-M', 'main']);
+      await git(['checkout', '-b', 'feature']);
+
+      File(p.join(temp.path, 'packages', 'core', 'lib', 'x.dart'))
+          .writeAsStringSync('// core changed\n');
+      await git(['add', 'packages/core/lib/x.dart']);
+      await git(['commit', '-m', 'change core']);
+
+      final seedsOnly = await runRipple(
+        ['list', '--changed', 'since:main'],
+        workingDirectory: temp.path,
+      );
+      expect(seedsOnly.exitCode, 0, reason: seedsOnly.stderr as String);
+      expect(stdoutLines(seedsOnly), ['packages/core']);
+
+      final withDependents = await runRipple(
+        ['list', '--changed', 'since:main', '--dependents'],
+        workingDirectory: temp.path,
+      );
+      expect(
+        withDependents.exitCode,
+        0,
+        reason: withDependents.stderr as String,
+      );
+      expect(stdoutLines(withDependents), [
+        'packages/app',
+        'packages/core',
+        'packages/ui',
+      ]);
     });
 
     test('--format paths matches default output', () async {
