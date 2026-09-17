@@ -323,6 +323,53 @@ packages:
         {'packages/ui'},
       );
     });
+
+    test('since + workdir descriptors union package owners', () async {
+      await _git(tempDir.path, args: ['checkout', '-b', 'feature']);
+
+      await File(p.join(coreDir.path, 'lib', 'a.dart'))
+          .writeAsString('// committed on feature\n');
+      await _git(
+        tempDir.path,
+        args: ['add', 'lib/a.dart'],
+        workingDirectory: coreDir.path,
+      );
+      await _git(tempDir.path, args: ['commit', '-m', 'change core']);
+
+      await File(p.join(uiDir.path, 'lib', 'b.dart'))
+          .writeAsString('// dirty ui\n');
+
+      final config = loadRippleConfig(start: tempDir);
+      final packages = discoverPackages(config);
+
+      expect(
+        changedPackageRelativePaths(
+          rootPath: config.rootPath,
+          descriptor: const ChangedSince('main'),
+          packages: packages,
+        ),
+        {'packages/core'},
+      );
+      expect(
+        changedPackageRelativePaths(
+          rootPath: config.rootPath,
+          descriptor: const ChangedWorkdir('HEAD'),
+          packages: packages,
+        ),
+        {'packages/ui'},
+      );
+      expect(
+        changedPackageRelativePathsForDescriptors(
+          rootPath: config.rootPath,
+          descriptors: const [
+            ChangedSince('main'),
+            ChangedWorkdir('HEAD'),
+          ],
+          packages: packages,
+        ),
+        {'packages/core', 'packages/ui'},
+      );
+    });
   });
 }
 
