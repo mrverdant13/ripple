@@ -128,7 +128,7 @@ optional (see [Shell quoting](#shell-quoting)).
 | `name` | no | Optional display name for the workspace. |
 | `replacements` | no | Named command aliases expanded from `{{key}}` placeholders. |
 | `replacementOverrides` | no | Filter-scoped overlays of `replacements` (first match wins). |
-| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`). |
+| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`, `changedIgnore`). |
 | `scripts` | no | Named scripts keyed by id (ids may contain dots, e.g. `format.ci`). |
 
 ### `packages`
@@ -141,6 +141,8 @@ packages:
   exclude:
     - '**/example/**'
     - '**/test/**'
+  changedIgnore:
+    - '**/*.md'
   groups:
     core:
       - packages/a
@@ -156,6 +158,8 @@ packages:
   Patterns that match the Ripple root itself (e.g. `**`, `.`) select the root
   package when it has a `pubspec.yaml`.
 - **`exclude`** — glob patterns subtracted from include matches.
+- **`changedIgnore`** — repo-relative path globs ignored by `changed` filters
+  before path-to-package mapping (see [Filters](#filters)).
 - **`groups`** — named sets of path globs used when filtering by group.
 - **`filtersPresets`** — named filter expression fragments reusable via
   `preset:` nodes (in any filter AST) or CLI `--preset`. Each value is a
@@ -464,7 +468,26 @@ not multiple values on the same leaf:
 | --- | --- |
 | `since:<ref>` | Commit-tree diff `{ref}...HEAD` (typical CI: `since:origin/main`) |
 | `range:<A..B>` / `range:<A...B>` | Explicit git range passed to `git diff` |
-| `workdir:<tree-ish>` | Working tree vs tree-ish (local uncommitted: `workdir:HEAD`) |
+| `workdir:<tree-ish>` | Working tree vs tree-ish (tracked dirty **and** untracked; local: `workdir:HEAD`) |
+| `since-latest-tag` | Same as `since:<tag>` for the latest reachable tag from `HEAD` (errors if none) |
+| `staged` | Staged index vs `HEAD` only |
+| `unstaged` | Tracked unstaged vs the index |
+| `untracked` | Untracked files (`git ls-files --others --exclude-standard`) |
+
+`workdir:HEAD` remains the union of tracked dirty + untracked. `staged`,
+`unstaged`, and `untracked` are opt-in splits of that surface.
+
+Optional `packages.changedIgnore` is a list of repo-relative path globs. Matching
+changed files are dropped **before** path-to-package mapping (for example
+`['**/*.md']` so README-only edits do not select a package):
+
+```yaml
+packages:
+  include:
+    - packages/*
+  changedIgnore:
+    - '**/*.md'
+```
 
 Ripple maps changed repo paths to packages using longest-prefix ownership
 among discovered packages (nested packages win over an ancestor root package).
@@ -582,7 +605,7 @@ ripple list --changed since:origin/main --dependents
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
 | `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
-| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
+| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Pass at most once. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
 

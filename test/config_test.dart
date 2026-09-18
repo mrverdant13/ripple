@@ -46,6 +46,7 @@ scripts:
         'e2e': ['packages/*/e2e'],
       });
       expect(config.packages.filtersPresets, isEmpty);
+      expect(config.packages.changedIgnore, isEmpty);
 
       final format = config.scripts['format.ci']!;
       expect(format.kind, ScriptKind.run);
@@ -1291,6 +1292,49 @@ scripts:
           FilterChanged('since:origin/main'),
         ]),
       );
+    });
+
+    test('parses bare changed descriptors on exec scripts', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  staged:
+    exec: dart analyze .
+    filters:
+      - changed: staged
+  sinceLatestTag:
+    exec: dart analyze .
+    filters:
+      - changed: since-latest-tag
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['staged']!.filters,
+        const FilterAnd([FilterChanged('staged')]),
+      );
+      expect(
+        config.scripts['sinceLatestTag']!.filters,
+        const FilterAnd([FilterChanged('since-latest-tag')]),
+      );
+    });
+
+    test('parses packages.changedIgnore globs', () {
+      final config = parseRippleYaml(
+        '''
+packages:
+  include:
+    - packages/*
+  changedIgnore:
+    - '**/*.md'
+    - '**/CHANGELOG.md'
+''',
+        rootPath: '/r',
+      );
+      expect(config.packages.changedIgnore, [
+        '**/*.md',
+        '**/CHANGELOG.md',
+      ]);
     });
 
     test('parses sdk filter on exec scripts', () {

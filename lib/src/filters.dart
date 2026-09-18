@@ -454,6 +454,7 @@ List<RipplePackage> filterPackages(
   final changedContext = _ChangedFilterMatchContext(
     rootPath: config.rootPath,
     mappingPackages: packagesForChangedMapping ?? packages,
+    ignoreGlobs: config.packages.changedIgnore,
   );
 
   final filtered = <RipplePackage>[];
@@ -503,10 +504,12 @@ final class _ChangedFilterMatchContext {
   _ChangedFilterMatchContext({
     required this.rootPath,
     required this.mappingPackages,
+    this.ignoreGlobs = const [],
   });
 
   final String rootPath;
   final List<RipplePackage> mappingPackages;
+  final List<String> ignoreGlobs;
   final Map<String, Set<String>> _cache = {};
 
   Set<String> changedOwners(FilterChanged filter) {
@@ -516,6 +519,7 @@ final class _ChangedFilterMatchContext {
         rootPath: rootPath,
         descriptor: descriptor,
         packages: mappingPackages,
+        ignoreGlobs: ignoreGlobs,
       );
     });
   }
