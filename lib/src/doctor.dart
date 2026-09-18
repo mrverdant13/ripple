@@ -11,6 +11,7 @@ import 'package:yaml/yaml.dart';
 
 import 'config.dart';
 import 'discovery.dart';
+import 'filters.dart';
 import 'graph.dart';
 import 'scripts.dart';
 
@@ -29,6 +30,9 @@ const doctorFindingResolutionMix = 'resolution.mix';
 /// Finding id: a workspace dependency constraint does not allow the target
 /// package's current pubspec version.
 const doctorFindingConstraintMismatch = 'constraint.mismatch';
+
+/// Finding id: a selected package's `dart pub get` output looks stale.
+const doctorFindingPubGetStale = 'pub.get.stale';
 
 /// Severity of a [DoctorFinding].
 enum DoctorSeverity {
@@ -138,6 +142,7 @@ DoctorReport runDoctor(
     ),
     if (_resolutionMixFinding(packages) case final finding?) finding,
     ..._constraintMismatchFindings(packages),
+    ..._pubGetStaleFindings(packages),
   ];
 
   return DoctorReport(
@@ -348,7 +353,8 @@ bool _expressionUsesChanged(
           FilterGroup() ||
           FilterMatch() ||
           FilterNoMatch() ||
-          FilterSdk():
+          FilterSdk() ||
+          FilterNeedsPubGet():
       return false;
   }
 }
@@ -485,6 +491,25 @@ List<DoctorFinding> _constraintMismatchFindings(List<RipplePackage> packages) {
     return (a.to ?? '').compareTo(b.to ?? '');
   });
   return findings;
+}
+
+List<DoctorFinding> _pubGetStaleFindings(List<RipplePackage> packages) {
+  final stale = [
+    for (final package in packages)
+      if (packageNeedsPubGet(package)) package.relativePath,
+  ]..sort();
+
+  return [
+    for (final relative in stale)
+      DoctorFinding(
+        id: doctorFindingPubGetStale,
+        severity: DoctorSeverity.warning,
+        message:
+            'dart pub get looks stale (.dart_tool/package_config.json missing '
+            'or older than pubspec.yaml / pubspec.lock)',
+        path: relative,
+      ),
+  ];
 }
 
 /// Top-level `resolution:` value from [package]'s `pubspec.yaml`, if present.
