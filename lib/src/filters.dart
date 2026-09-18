@@ -57,6 +57,7 @@ class PackageFilterCriteria {
     List<String> presets = const [],
     String? changed,
     String? sdk,
+    bool? needsPubGet,
     List<String>? packageNames,
   }) {
     final leaves = <FilterExpr>[
@@ -71,6 +72,7 @@ class PackageFilterCriteria {
       for (final preset in presets) FilterPreset(preset),
       if (changed != null) FilterChanged(changed),
       if (sdk != null) FilterSdk(sdk),
+      if (needsPubGet != null) FilterNeedsPubGet(needsPubGet),
     ];
     return PackageFilterCriteria(
       expression: _andLeaves(leaves),
@@ -194,7 +196,8 @@ FilterExpr resolveFilterPresets(
     FilterMatch() ||
     FilterNoMatch() ||
     FilterChanged() ||
-    FilterSdk() =>
+    FilterSdk() ||
+    FilterNeedsPubGet() =>
       expression,
   };
 }
@@ -490,7 +493,8 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterNoMatch() ||
     FilterPreset() ||
     FilterChanged() ||
-    FilterSdk() =>
+    FilterSdk() ||
+    FilterNeedsPubGet() =>
       const {},
   };
 }
@@ -561,6 +565,8 @@ bool _matchesExpression(
     final FilterChanged filter =>
       changedContext.changedOwners(filter).contains(package.relativePath),
     FilterSdk(:final sdk) => _matchesSdk(package, sdk, pubspecCache),
+    FilterNeedsPubGet(:final needsPubGet) =>
+      packageNeedsPubGet(package) == needsPubGet,
     // Presets are expanded by [resolveFilterPresets] before matching.
     FilterPreset(:final name) => throw StateError(
         'Unresolved filter preset "$name" during evaluation',
@@ -669,6 +675,49 @@ bool _matchesSdk(
   Map<String, Pubspec> pubspecCache,
 ) {
   return packageSdkLabel(_cachedPubspec(package, pubspecCache)) == sdk;
+}
+
+/// Whether [package] looks like it needs `dart pub get`.
+///
+/// Returns `true` when `.dart_tool/package_config.json` is missing or its
+/// modification time is older than that package's `pubspec.yaml` or
+/// `pubspec.lock` (when present). Only per-package files are considered.
+bool packageNeedsPubGet(RipplePackage package) {
+  final packageConfig =
+      File(p.join(package.path, '.dart_tool', 'package_config.json'));
+  if (!packageConfig.existsSync()) {
+    return true;
+  }
+
+  DateTime packageConfigModified;
+  try {
+    packageConfigModified = packageConfig.lastModifiedSync();
+  } on FileSystemException {
+    return true;
+  }
+
+  final pubspec = File(p.join(package.path, 'pubspec.yaml'));
+  if (_fileIsNewerThan(pubspec, packageConfigModified)) {
+    return true;
+  }
+
+  final lock = File(p.join(package.path, 'pubspec.lock'));
+  if (_fileIsNewerThan(lock, packageConfigModified)) {
+    return true;
+  }
+
+  return false;
+}
+
+bool _fileIsNewerThan(File file, DateTime reference) {
+  if (!file.existsSync()) {
+    return false;
+  }
+  try {
+    return file.lastModifiedSync().isAfter(reference);
+  } on FileSystemException {
+    return false;
+  }
 }
 
 Pubspec _cachedPubspec(
