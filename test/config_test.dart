@@ -1311,11 +1311,15 @@ scripts:
       );
       expect(
         config.scripts['staged']!.filters,
-        const FilterAnd([FilterChanged(['staged'])]),
+        const FilterAnd([
+          FilterChanged(['staged'])
+        ]),
       );
       expect(
         config.scripts['sinceLatestTag']!.filters,
-        const FilterAnd([FilterChanged(['since-latest-tag'])]),
+        const FilterAnd([
+          FilterChanged(['since-latest-tag'])
+        ]),
       );
     });
 
