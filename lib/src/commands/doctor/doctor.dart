@@ -23,18 +23,18 @@ class DoctorCommand extends RippleCommand {
         defaultsTo: doctorFormatText,
       )
       ..addFlag(
-        constraintsFlagName,
+        fatalConstraintMismatchFlagName,
         negatable: false,
-        help: 'Also report workspace dependency constraints that do not allow '
-            "the target package's current pubspec version.",
+        help: 'Exit 1 when any constraint.mismatch warning is reported '
+            '(similar to dart analyze --fatal-warnings).',
       );
   }
 
   /// Option name for `--format`.
   static const formatOptionName = 'format';
 
-  /// Flag name for `--constraints`.
-  static const constraintsFlagName = 'constraints';
+  /// Flag name for `--fatal-constraint-mismatch`.
+  static const fatalConstraintMismatchFlagName = 'fatal-constraint-mismatch';
 
   @override
   String get name => 'doctor';
@@ -58,10 +58,7 @@ class DoctorCommand extends RippleCommand {
     }
 
     final config = loadRippleConfig();
-    final report = runDoctor(
-      config,
-      checkConstraints: argResults!.flag(constraintsFlagName),
-    );
+    final report = runDoctor(config);
 
     if (format == doctorFormatJson) {
       stdout.writeln(formatDoctorJson(report));
@@ -69,7 +66,10 @@ class DoctorCommand extends RippleCommand {
       stdout.writeln(formatDoctorText(report));
     }
 
-    if (report.hasErrors) {
+    final fatalConstraintMismatch =
+        argResults!.flag(fatalConstraintMismatchFlagName);
+    if (report.hasErrors ||
+        (fatalConstraintMismatch && report.hasConstraintMismatches)) {
       exitCode = 1;
     }
   }

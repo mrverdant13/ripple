@@ -107,18 +107,23 @@ class DoctorReport {
   /// Whether any finding has [DoctorSeverity.error].
   bool get hasErrors =>
       findings.any((finding) => finding.severity == DoctorSeverity.error);
+
+  /// Whether any finding is a [doctorFindingConstraintMismatch].
+  bool get hasConstraintMismatches => findings.any(
+        (finding) => finding.id == doctorFindingConstraintMismatch,
+      );
 }
 
 /// Runs v1 doctor checks against [config]. Does not create or edit files.
 ///
-/// When [checkConstraints] is true, also reports workspace dependency
-/// constraints that do not allow the target package's current version.
+/// Always includes workspace dependency constraint mismatches as warnings
+/// ([doctorFindingConstraintMismatch]). Use `--fatal-constraint-mismatch` on
+/// the CLI to exit non-zero when those warnings are present.
 ///
 /// [environment] defaults to [Platform.environment] (used for `PATH` /
 /// `PATHEXT`). [executableExists] overrides PATH lookup for tests.
 DoctorReport runDoctor(
   RippleConfig config, {
-  bool checkConstraints = false,
   Map<String, String>? environment,
   bool Function(String executable)? executableExists,
 }) {
@@ -132,7 +137,7 @@ DoctorReport runDoctor(
       executableExists: executableExists,
     ),
     if (_resolutionMixFinding(packages) case final finding?) finding,
-    if (checkConstraints) ..._constraintMismatchFindings(packages),
+    ..._constraintMismatchFindings(packages),
   ];
 
   return DoctorReport(
@@ -460,7 +465,7 @@ List<DoctorFinding> _constraintMismatchFindings(List<RipplePackage> packages) {
       findings.add(
         DoctorFinding(
           id: doctorFindingConstraintMismatch,
-          severity: DoctorSeverity.error,
+          severity: DoctorSeverity.warning,
           message: '${package.name} depends on ${target.name} $constraintText '
               'but ${target.name} is $versionText',
           from: package.name,
