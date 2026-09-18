@@ -755,15 +755,31 @@ Exit **1** when any finding has severity `error`; warnings alone exit **0**.
 | `git.missing` | error if any script/preset/override uses a `changed` filter; otherwise warning | No `.git` checkout at the Ripple root |
 | `replacement.missing` | warning | The first token of a `replacements.dart` or `replacements.flutter` value is not found on `PATH` |
 | `resolution.mix` | warning | Some selected packages set `resolution: workspace` and others do not |
+| `constraint.mismatch` | error (with `--constraints`) | A selected package's hosted-style dependency on another selected package does not allow that package's current `version:` |
 
 `--format json` prints a JSON object with `packageCount` and a `findings` array
-(`id`, `severity`, `message`, optional `path`).
+(`id`, `severity`, `message`, optional `path`). Constraint mismatches also
+include `from`, `to`, `constraint`, and `version`.
+
+`--constraints` adds workspace dependency constraint checks. For each
+workspace edge `A → B` where A's pubspec declares a hosted-style constraint on
+`B` (for example `core: ^1.0.0`), doctor errors when that constraint does not
+allow B's current `version:`. Path, git, and SDK dependencies are skipped.
+Without the flag, doctor does not run these checks. Doctor never rewrites
+pubspecs.
 
 ```bash
 ripple doctor
 ripple doctor --format json
+ripple doctor --constraints
+ripple doctor --constraints --format json
 ```
 
+Example mismatch:
+
+```text
+error  constraint.mismatch  api_client depends on core ^1.0.0 but core is 2.0.0
+```
 ## Environment variables
 
 Child processes receive these variables in the environment (and as `$VAR` /
