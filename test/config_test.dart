@@ -1289,7 +1289,7 @@ scripts:
       expect(
         config.scripts['analyze']!.filters,
         const FilterAnd([
-          FilterChanged('since:origin/main'),
+          FilterChanged(['since:origin/main']),
         ]),
       );
     });
@@ -1311,11 +1311,105 @@ scripts:
       );
       expect(
         config.scripts['staged']!.filters,
-        const FilterAnd([FilterChanged('staged')]),
+        const FilterAnd([
+          FilterChanged(['staged'])
+        ]),
       );
       expect(
         config.scripts['sinceLatestTag']!.filters,
-        const FilterAnd([FilterChanged('since-latest-tag')]),
+        const FilterAnd([
+          FilterChanged(['since-latest-tag'])
+        ]),
+      );
+    });
+
+    test('parses list-form changed filter as a union', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  analyze:
+    exec: dart analyze .
+    filters:
+      - changed:
+          - since:origin/main
+          - workdir:HEAD
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['analyze']!.filters,
+        const FilterAnd([
+          FilterChanged(['since:origin/main', 'workdir:HEAD']),
+        ]),
+      );
+    });
+
+    test('rejects empty list-form changed filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('changed` list must not be empty'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects blank entries in list-form changed filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          - since:origin/main
+          - '  '
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('changed` entries must be non-empty'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects map-form changed filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          since: origin/main
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('changed` must be a descriptor string'),
+          ),
+        ),
       );
     });
 
@@ -1504,7 +1598,7 @@ scripts:
       );
     });
 
-    test('rejects list-form changed filter', () {
+    test('rejects invalid descriptor in list-form changed filter', () {
       expect(
         () => parseRippleYaml(
           '''
@@ -1513,8 +1607,7 @@ scripts:
     exec: dart analyze .
     filters:
       - changed:
-          - since:origin/main
-          - workdir:HEAD
+          - since:HEAD
 ''',
           rootPath: '/r',
         ),
@@ -1522,7 +1615,7 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            contains('changed` must be a single descriptor string'),
+            contains('workdir:HEAD'),
           ),
         ),
       );

@@ -605,6 +605,92 @@ environment:
       expect(stdoutLines(workdir), ['packages/core', 'packages/ui']);
     });
 
+    test('repeatable --changed unions descriptors', () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_changed_union_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: changed_union
+packages:
+  include:
+    - packages/*
+''');
+      for (final name in ['core', 'ui']) {
+        final dir = Directory(p.join(temp.path, 'packages', name))
+          ..createSync(recursive: true);
+        File(p.join(dir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: $name
+environment:
+  sdk: ^3.5.0
+''');
+        File(p.join(dir.path, 'lib', 'x.dart'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// $name\n');
+      }
+
+      Future<void> git(List<String> args) async {
+        final result = await Process.run(
+          'git',
+          args,
+          workingDirectory: temp.path,
+          runInShell: false,
+        );
+        expect(
+          result.exitCode,
+          0,
+          reason: 'git ${args.join(' ')}: ${result.stderr}',
+        );
+      }
+
+      await git(['init']);
+      await git(['config', 'user.email', 'test@test.com']);
+      await git(['config', 'user.name', 'test']);
+      await git(['add', '.']);
+      await git(['commit', '-m', 'initial']);
+      await git(['branch', '-M', 'main']);
+      await git(['checkout', '-b', 'feature']);
+
+      File(p.join(temp.path, 'packages', 'core', 'lib', 'x.dart'))
+          .writeAsStringSync('// core changed\n');
+      await git(['add', 'packages/core/lib/x.dart']);
+      await git(['commit', '-m', 'change core']);
+
+      File(p.join(temp.path, 'packages', 'ui', 'lib', 'x.dart'))
+          .writeAsStringSync('// ui dirty\n');
+
+      final sinceOnly = await runRipple(
+        ['list', '--changed', 'since:main'],
+        workingDirectory: temp.path,
+      );
+      expect(sinceOnly.exitCode, 0, reason: sinceOnly.stderr as String);
+      expect(stdoutLines(sinceOnly), ['packages/core']);
+
+      final workdirOnly = await runRipple(
+        ['list', '--changed', 'workdir:HEAD'],
+        workingDirectory: temp.path,
+      );
+      expect(workdirOnly.exitCode, 0, reason: workdirOnly.stderr as String);
+      expect(stdoutLines(workdirOnly), ['packages/ui']);
+
+      final union = await runRipple(
+        [
+          'list',
+          '--changed',
+          'since:main',
+          '--changed',
+          'workdir:HEAD',
+        ],
+        workingDirectory: temp.path,
+      );
+      expect(union.exitCode, 0, reason: union.stderr as String);
+      expect(stdoutLines(union), ['packages/core', 'packages/ui']);
+    });
+
     test('--format paths matches default output', () async {
       final defaultResult = await runRipple(['list']);
       final pathsResult = await runRipple(['list', '--format', 'paths']);

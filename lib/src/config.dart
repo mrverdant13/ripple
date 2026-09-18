@@ -206,20 +206,26 @@ final class FilterNoMatch extends FilterExpr {
   int get hashCode => Object.hashAll(globs);
 }
 
-/// Git `changed` descriptor leaf (`since:`, `range:`, or `workdir:`).
+/// Git `changed` descriptor leaf (`since:`, `range:`, `workdir:`, or bare
+/// kinds such as `staged` / `since-latest-tag`).
+///
+/// [descriptors] is a non-empty list. A package matches when it owns a path
+/// from the **union** of all descriptors (path sets merged, then longest-prefix
+/// mapped). A YAML string or a single CLI `--changed` becomes a one-element
+/// list; a YAML list or repeated `--changed` is the union.
 final class FilterChanged extends FilterExpr {
-  /// Creates a `changed` leaf.
-  const FilterChanged(this.descriptor);
+  /// Creates a `changed` leaf from one or more descriptor strings.
+  const FilterChanged(this.descriptors);
 
-  /// Single descriptor string, for example `since:origin/main`.
-  final String descriptor;
+  /// Descriptor strings, for example `since:origin/main` or `workdir:HEAD`.
+  final List<String> descriptors;
 
   @override
   bool operator ==(Object other) =>
-      other is FilterChanged && other.descriptor == descriptor;
+      other is FilterChanged && _listEquals(descriptors, other.descriptors);
 
   @override
-  int get hashCode => descriptor.hashCode;
+  int get hashCode => Object.hashAll(descriptors);
 }
 
 /// Allowed YAML / CLI `sdk` filter values (`dart` or `flutter`).
@@ -1737,34 +1743,62 @@ FilterExpr _filterNodeFromValue(
       return FilterPreset(presetValue);
     case 'changed':
       final changedValue = entry.value;
+      if (changedValue is String) {
+        if (changedValue.trim().isEmpty) {
+          throw CheckedFromJsonException(
+            parent,
+            'filters',
+            'FilterExpr',
+            'Invalid filter at $path: `changed` must be a non-empty string',
+          );
+        }
+        final descriptor = changedValue.trim();
+        parseChangedDescriptor(descriptor);
+        return FilterChanged([descriptor]);
+      }
       if (changedValue is List) {
-        throw CheckedFromJsonException(
-          parent,
-          'filters',
-          'FilterExpr',
-          'Invalid filter at $path: `changed` must be a single descriptor '
-              'string, not a list. Use `or:` to combine multiple changed filters.',
-        );
+        if (changedValue.isEmpty) {
+          throw CheckedFromJsonException(
+            parent,
+            'filters',
+            'FilterExpr',
+            'Invalid filter at $path: `changed` list must not be empty',
+          );
+        }
+        final descriptors = <String>[];
+        for (var i = 0; i < changedValue.length; i++) {
+          final element = changedValue[i];
+          if (element is! String) {
+            throw CheckedFromJsonException(
+              parent,
+              'filters',
+              'FilterExpr',
+              'Invalid filter at $path: `changed` entries must be strings '
+                  '(index $i)',
+            );
+          }
+          if (element.trim().isEmpty) {
+            throw CheckedFromJsonException(
+              parent,
+              'filters',
+              'FilterExpr',
+              'Invalid filter at $path: `changed` entries must be non-empty '
+                  'strings (index $i)',
+            );
+          }
+          final descriptor = element.trim();
+          parseChangedDescriptor(descriptor);
+          descriptors.add(descriptor);
+        }
+        return FilterChanged(List<String>.unmodifiable(descriptors));
       }
-      if (changedValue is! String) {
-        throw CheckedFromJsonException(
-          parent,
-          'filters',
-          'FilterExpr',
-          'Invalid filter at $path: `changed` must be a string',
-        );
-      }
-      if (changedValue.trim().isEmpty) {
-        throw CheckedFromJsonException(
-          parent,
-          'filters',
-          'FilterExpr',
-          'Invalid filter at $path: `changed` must be a non-empty string',
-        );
-      }
-      final descriptor = changedValue.trim();
-      parseChangedDescriptor(descriptor);
-      return FilterChanged(descriptor);
+      throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: `changed` must be a descriptor string or '
+            'a non-empty list of descriptor strings',
+      );
     case 'sdk':
       final sdkValue = entry.value;
       if (sdkValue is Map || sdkValue is List) {
