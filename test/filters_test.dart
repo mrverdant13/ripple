@@ -902,6 +902,135 @@ dependencies:
       expect(names(filtered), ['admin', 'mobile']);
     });
   });
+
+  group('filterPackages — needsPubGet', () {
+    late Directory temp;
+    late RippleConfig pubGetConfig;
+    late List<RipplePackage> pubGetPackages;
+
+    void writePackageConfig(String packageDir, {required DateTime modified}) {
+      final file = File(
+        p.join(packageDir, '.dart_tool', 'package_config.json'),
+      );
+      file
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      file.setLastModifiedSync(modified);
+    }
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('ripple_needs_pub_get_');
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+''');
+      _writePubspec(
+        p.join(temp.path, 'packages', 'fresh'),
+        '''
+name: fresh
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'missing_config'),
+        '''
+name: missing_config
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'stale_pubspec'),
+        '''
+name: stale_pubspec
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'stale_lock'),
+        '''
+name: stale_lock
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+
+      final now = DateTime.now();
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'fresh'),
+        modified: now.add(const Duration(seconds: 2)),
+      );
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'stale_pubspec'),
+        modified: now.subtract(const Duration(seconds: 5)),
+      );
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'stale_lock'),
+        modified: now.add(const Duration(seconds: 2)),
+      );
+      final lock = File(
+        p.join(temp.path, 'packages', 'stale_lock', 'pubspec.lock'),
+      )..writeAsStringSync('# lock\n');
+      lock.setLastModifiedSync(now.add(const Duration(seconds: 5)));
+
+      pubGetConfig = loadRippleConfig(start: temp);
+      pubGetPackages = discoverPackages(pubGetConfig);
+    });
+
+    tearDown(() {
+      if (temp.existsSync()) {
+        temp.deleteSync(recursive: true);
+      }
+    });
+
+    test('needsPubGet true matches missing or older package_config', () {
+      final filtered = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(const FilterNeedsPubGet(true)),
+      );
+
+      expect(
+        names(filtered),
+        ['missing_config', 'stale_lock', 'stale_pubspec'],
+      );
+    });
+
+    test('needsPubGet false matches fresh packages only', () {
+      final filtered = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(const FilterNeedsPubGet(false)),
+      );
+
+      expect(names(filtered), ['fresh']);
+    });
+
+    test('packageNeedsPubGet is false after fresh package_config', () {
+      final fresh = pubGetPackages.singleWhere((p) => p.name == 'fresh');
+      expect(packageNeedsPubGet(fresh), isFalse);
+    });
+
+    test('fromNameGlobs needsPubGet true builds the leaf', () {
+      final filtered = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: PackageFilterCriteria.fromNameGlobs(needsPubGet: true),
+      );
+
+      expect(
+        names(filtered),
+        ['missing_config', 'stale_lock', 'stale_pubspec'],
+      );
+    });
+  });
 }
 
 void _writePubspec(String packageDir, String contents) {

@@ -44,6 +44,21 @@ void main() {
       ..writeAsStringSync(contents);
   }
 
+  void markPubGetFresh(String packageDir) {
+    final pubspec = File(p.join(packageDir, 'pubspec.yaml'));
+    final packageConfig = File(
+      p.join(packageDir, '.dart_tool', 'package_config.json'),
+    );
+    packageConfig
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+    if (pubspec.existsSync()) {
+      packageConfig.setLastModifiedSync(
+        pubspec.lastModifiedSync().add(const Duration(seconds: 2)),
+      );
+    }
+  }
+
   group('ripple doctor', () {
     test('clean fixture exits 0 with OK summary', () async {
       final temp = createTempDir('ripple_doctor_cmd_clean_');
@@ -60,6 +75,8 @@ packages:
         p.join(temp.path, 'packages', 'ui', 'pubspec.yaml'),
         'name: ui\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'ui'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final result = await runRipple(['doctor'], workingDirectory: temp.path);
@@ -83,6 +100,7 @@ packages:
         p.join(temp.path, 'scratch', 'orphan', 'pubspec.yaml'),
         'name: orphan\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final result = await runRipple(['doctor'], workingDirectory: temp.path);
@@ -108,6 +126,7 @@ scripts:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
 
       final result = await runRipple(['doctor'], workingDirectory: temp.path);
 
@@ -130,6 +149,7 @@ packages:
         p.join(temp.path, 'scratch', 'orphan', 'pubspec.yaml'),
         'name: orphan\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final result = await runRipple(
@@ -159,6 +179,7 @@ packages:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final before = Directory(temp.path)
@@ -174,6 +195,28 @@ packages:
           .map((e) => e.path)
           .toSet();
       expect(after, before);
+    });
+
+    test('pub.get.stale warns and exits 0', () async {
+      final temp = createTempDir('ripple_doctor_cmd_pubget_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final result = await runRipple(['doctor'], workingDirectory: temp.path);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(
+        result.stdout,
+        contains('warning  pub.get.stale  packages/core'),
+      );
     });
 
     test('outside any ripple.yaml ancestry fails clearly', () async {

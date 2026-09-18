@@ -23,6 +23,23 @@ void main() {
       ..writeAsStringSync(contents);
   }
 
+  /// Writes a package_config.json newer than the package pubspec so doctor
+  /// does not emit `pub.get.stale` for fixtures that are otherwise clean.
+  void markPubGetFresh(String packageDir) {
+    final pubspec = File(p.join(packageDir, 'pubspec.yaml'));
+    final packageConfig = File(
+      p.join(packageDir, '.dart_tool', 'package_config.json'),
+    );
+    packageConfig
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+    if (pubspec.existsSync()) {
+      packageConfig.setLastModifiedSync(
+        pubspec.lastModifiedSync().add(const Duration(seconds: 2)),
+      );
+    }
+  }
+
   RippleConfig loadConfig(Directory root) {
     return loadRippleConfig(start: root);
   }
@@ -44,6 +61,8 @@ packages:
         p.join(temp.path, 'packages', 'api', 'pubspec.yaml'),
         'name: api\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'api'));
       // Mimic a git checkout so git.missing is not emitted.
       Directory(p.join(temp.path, '.git')).createSync();
 
@@ -70,6 +89,7 @@ packages:
         p.join(temp.path, 'scratch', 'orphan', 'pubspec.yaml'),
         'name: orphan\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(loadConfig(temp));
@@ -97,6 +117,7 @@ packages:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
 
       final report = runDoctor(loadConfig(temp));
 
@@ -124,6 +145,7 @@ scripts:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
 
       final report = runDoctor(loadConfig(temp));
 
@@ -148,6 +170,7 @@ packages:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
 
       expect(configUsesChangedFilters(loadConfig(temp)), isTrue);
       final report = runDoctor(loadConfig(temp));
@@ -173,6 +196,7 @@ replacements:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(
@@ -201,6 +225,7 @@ replacements:
         p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
         'name: core\nenvironment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(
@@ -232,6 +257,8 @@ packages:
         'name: api\nversion: 1.0.0\n'
         'environment:\n  sdk: ^3.5.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'api'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(loadConfig(temp));
@@ -242,6 +269,63 @@ packages:
       expect(mix.severity, DoctorSeverity.warning);
       expect(mix.message, contains('packages/core'));
       expect(mix.message, contains('packages/api'));
+    });
+
+    test('pub.get.stale warns when package_config is missing or older', () {
+      final temp = createTempDir('ripple_doctor_pubget_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'fresh', 'pubspec.yaml'),
+        'name: fresh\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'missing', 'pubspec.yaml'),
+        'name: missing\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'stale', 'pubspec.yaml'),
+        'name: stale\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      markPubGetFresh(p.join(temp.path, 'packages', 'fresh'));
+      final staleConfig = File(
+        p.join(
+          temp.path,
+          'packages',
+          'stale',
+          '.dart_tool',
+          'package_config.json',
+        ),
+      );
+      staleConfig
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      final pubspec = File(
+        p.join(temp.path, 'packages', 'stale', 'pubspec.yaml'),
+      );
+      staleConfig.setLastModifiedSync(
+        pubspec.lastModifiedSync().subtract(const Duration(seconds: 5)),
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final report = runDoctor(loadConfig(temp));
+
+      expect(report.hasErrors, isFalse);
+      final stale = report.findings
+          .where((f) => f.id == doctorFindingPubGetStale)
+          .toList();
+      expect(
+        stale.map((f) => f.path).toList(),
+        ['packages/missing', 'packages/stale'],
+      );
+      expect(stale.every((f) => f.severity == DoctorSeverity.warning), isTrue);
+      expect(
+        formatDoctorText(report),
+        contains('warning  pub.get.stale  packages/missing'),
+      );
     });
 
     test('formatDoctorJson encodes findings', () {
