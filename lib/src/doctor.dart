@@ -5,10 +5,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:pub_semver/pub_semver.dart';
+import 'package:pubspec_parse/pubspec_parse.dart';
 import 'package:yaml/yaml.dart';
 
 import 'config.dart';
 import 'discovery.dart';
+import 'graph.dart';
 import 'scripts.dart';
 
 /// Finding id: a `pubspec.yaml` on disk is outside include/exclude selection.
@@ -22,6 +25,10 @@ const doctorFindingReplacementMissing = 'replacement.missing';
 
 /// Finding id: some selected packages use `resolution: workspace`, others do not.
 const doctorFindingResolutionMix = 'resolution.mix';
+
+/// Finding id: a workspace dependency constraint does not allow the target
+/// package's current pubspec version.
+const doctorFindingConstraintMismatch = 'constraint.mismatch';
 
 /// Severity of a [DoctorFinding].
 enum DoctorSeverity {
@@ -40,6 +47,10 @@ class DoctorFinding {
     required this.severity,
     required this.message,
     this.path,
+    this.from,
+    this.to,
+    this.constraint,
+    this.version,
   });
 
   /// Stable id (`include.missed`, `git.missing`, …).
@@ -54,12 +65,28 @@ class DoctorFinding {
   /// Optional repo-relative path (posix) related to the finding.
   final String? path;
 
+  /// Depending package name for [doctorFindingConstraintMismatch].
+  final String? from;
+
+  /// Dependency package name for [doctorFindingConstraintMismatch].
+  final String? to;
+
+  /// Declared version constraint string for [doctorFindingConstraintMismatch].
+  final String? constraint;
+
+  /// Current pubspec version of [to] for [doctorFindingConstraintMismatch].
+  final String? version;
+
   /// JSON object for `--format json`.
   Map<String, Object?> toJson() => {
         'id': id,
         'severity': severity.name,
         'message': message,
         if (path != null) 'path': path,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+        if (constraint != null) 'constraint': constraint,
+        if (version != null) 'version': version,
       };
 }
 
@@ -84,10 +111,14 @@ class DoctorReport {
 
 /// Runs v1 doctor checks against [config]. Does not create or edit files.
 ///
+/// When [checkConstraints] is true, also reports workspace dependency
+/// constraints that do not allow the target package's current version.
+///
 /// [environment] defaults to [Platform.environment] (used for `PATH` /
 /// `PATHEXT`). [executableExists] overrides PATH lookup for tests.
 DoctorReport runDoctor(
   RippleConfig config, {
+  bool checkConstraints = false,
   Map<String, String>? environment,
   bool Function(String executable)? executableExists,
 }) {
@@ -101,6 +132,7 @@ DoctorReport runDoctor(
       executableExists: executableExists,
     ),
     if (_resolutionMixFinding(packages) case final finding?) finding,
+    if (checkConstraints) ..._constraintMismatchFindings(packages),
   ];
 
   return DoctorReport(
@@ -388,6 +420,66 @@ DoctorFinding? _resolutionMixFinding(List<RipplePackage> packages) {
     message: 'mixed resolution: workspace (${withWorkspace.join(', ')}) vs '
         'other (${withoutWorkspace.join(', ')})',
   );
+}
+
+/// Workspace edges whose hosted-style constraint does not allow the target
+/// package's current [Pubspec.version].
+///
+/// Only [HostedDependency] (and hosted-shaped string constraints) are checked.
+/// Path / git / SDK deps have no comparable version predicate and are skipped.
+/// Targets without a `version:` are skipped (nothing to compare against).
+List<DoctorFinding> _constraintMismatchFindings(List<RipplePackage> packages) {
+  if (packages.isEmpty) {
+    return const [];
+  }
+
+  final graph = WorkspaceGraph.fromPackages(packages);
+  final findings = <DoctorFinding>[];
+
+  for (final package in packages) {
+    final pubspec = resolvePackagePubspec(package);
+    for (final target in graph.dependenciesOf(package)) {
+      final dependency = pubspec.dependencies[target.name] ??
+          pubspec.devDependencies[target.name];
+      if (dependency is! HostedDependency) {
+        continue;
+      }
+
+      final Version? targetVersion = resolvePackagePubspec(target).version;
+      if (targetVersion == null) {
+        continue;
+      }
+
+      final constraint = dependency.version;
+      if (constraint.allows(targetVersion)) {
+        continue;
+      }
+
+      final constraintText = '$constraint';
+      final versionText = '$targetVersion';
+      findings.add(
+        DoctorFinding(
+          id: doctorFindingConstraintMismatch,
+          severity: DoctorSeverity.error,
+          message: '${package.name} depends on ${target.name} $constraintText '
+              'but ${target.name} is $versionText',
+          from: package.name,
+          to: target.name,
+          constraint: constraintText,
+          version: versionText,
+        ),
+      );
+    }
+  }
+
+  findings.sort((a, b) {
+    final fromCmp = (a.from ?? '').compareTo(b.from ?? '');
+    if (fromCmp != 0) {
+      return fromCmp;
+    }
+    return (a.to ?? '').compareTo(b.to ?? '');
+  });
+  return findings;
 }
 
 /// Top-level `resolution:` value from [package]'s `pubspec.yaml`, if present.
