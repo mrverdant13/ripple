@@ -435,11 +435,27 @@ scripts:
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 | `changed` | single descriptor string | Package had path changes per git (see below) |
 | `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
+| `needsPubGet` | boolean | `true` = `.dart_tool/package_config.json` missing or older than that package's `pubspec.yaml` / `pubspec.lock`; `false` = complement |
 
 `sdk: flutter` means the package declares `environment.flutter` in
 `pubspec.yaml`. A `flutter:` SDK dependency alone does **not** count (use
 `dependsOn: [flutter]` for that). `sdk: dart` is the complement. Pass at most
 one `--sdk` value (two values would be an empty set).
+
+`needsPubGet` compares **per-package** files only (no root workspace lock).
+Use it to run `dart pub get` only where resolution metadata looks stale, for
+example:
+
+```yaml
+scripts:
+  bootstrap:
+    exec: dart pub get
+    filters:
+      - needsPubGet: true
+```
+
+There is no built-in `analyze` command. Prefer a script such as
+`{{dart}} analyze --no-pub` when packages are already resolved.
 
 `changed` accepts **one** descriptor (not a list). Combine modes with `or:`,
 not multiple values on the same leaf:
@@ -544,6 +560,7 @@ ripple list --depends-on path
 ripple list --preset e2eTestable
 ripple list --sdk dart
 ripple list --sdk flutter --group apps
+ripple list --needs-pub-get
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
 ripple list --match core --dependents
@@ -564,6 +581,7 @@ ripple list --changed since:origin/main --dependents
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
+| `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, or `workdir:`). Pass at most once. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
@@ -677,7 +695,7 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--no-dir-exists`, `--no-file-exists`, `--depends-on`,
-  `--preset`, `--changed`, `--sdk`, and
+  `--preset`, `--changed`, `--sdk`, `--needs-pub-get`, and
   `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
   rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
   banners use `(root)`; each step also gets command start/end banners stamped
@@ -758,6 +776,7 @@ except `--fatal-constraint-mismatch` also exits **1** when any
 | `replacement.missing` | warning | The first token of a `replacements.dart` or `replacements.flutter` value is not found on `PATH` |
 | `resolution.mix` | warning | Some selected packages set `resolution: workspace` and others do not |
 | `constraint.mismatch` | warning | A selected package's hosted-style dependency on another selected package does not allow that package's current `version:` |
+| `pub.get.stale` | warning | A selected package's `.dart_tool/package_config.json` is missing or older than that package's `pubspec.yaml` / `pubspec.lock` |
 
 `--format json` prints a JSON object with `packageCount` and a `findings` array
 (`id`, `severity`, `message`, optional `path`). Constraint mismatches also
