@@ -509,7 +509,8 @@ $deps
       ]);
     });
 
-    test('--changed staged / unstaged / since-latest-tag select split path sets',
+    test(
+        '--changed staged / unstaged / since-latest-tag select split path sets',
         () async {
       final temp = Directory.systemTemp.createTempSync('ripple_list_kinds_');
       addTearDown(() {

@@ -24,7 +24,8 @@ void main() {
     });
 
     test('accepts bare since-latest-tag, staged, unstaged, and untracked', () {
-      expect(parseChangedDescriptor('since-latest-tag'), isA<ChangedSinceLatestTag>());
+      expect(parseChangedDescriptor('since-latest-tag'),
+          isA<ChangedSinceLatestTag>());
       expect(parseChangedDescriptor('staged'), isA<ChangedStaged>());
       expect(parseChangedDescriptor('unstaged'), isA<ChangedUnstaged>());
       expect(parseChangedDescriptor('untracked'), isA<ChangedUntracked>());
@@ -32,7 +33,8 @@ void main() {
 
     test('accepts bare kinds written with an empty payload', () {
       expect(parseChangedDescriptor('staged:'), isA<ChangedStaged>());
-      expect(parseChangedDescriptor('since-latest-tag:'), isA<ChangedSinceLatestTag>());
+      expect(parseChangedDescriptor('since-latest-tag:'),
+          isA<ChangedSinceLatestTag>());
     });
 
     test('rejects payloads on bare kinds', () {
@@ -204,7 +206,8 @@ packages:
       expect(owners, {'packages/core'});
     });
 
-    test('since-latest-tag matches since:<latest-tag> after tagged baseline', () async {
+    test('since-latest-tag matches since:<latest-tag> after tagged baseline',
+        () async {
       await _git(tempDir.path, args: ['tag', 'v1.0.0']);
       await File(p.join(uiDir.path, 'lib', 'b.dart'))
           .writeAsString('// after tag\n');
@@ -295,8 +298,7 @@ packages:
     });
 
     test('changedIgnore drops matching paths before ownership', () async {
-      await File(p.join(coreDir.path, 'README.md'))
-          .writeAsString('# core\n');
+      await File(p.join(coreDir.path, 'README.md')).writeAsString('# core\n');
       await File(p.join(uiDir.path, 'lib', 'b.dart'))
           .writeAsString('// ui code\n');
 
