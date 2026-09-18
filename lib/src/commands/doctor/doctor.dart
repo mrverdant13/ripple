@@ -11,20 +11,30 @@ import 'package:ripple_cli/src/doctor.dart';
 class DoctorCommand extends RippleCommand {
   /// {@macro ripple_cli.doctor_command}
   DoctorCommand() {
-    argParser.addOption(
-      formatOptionName,
-      help: 'Output format: text (default) or json.',
-      allowed: doctorFormatValues,
-      allowedHelp: {
-        doctorFormatText: 'Human-readable findings (default).',
-        doctorFormatJson: 'JSON object with packageCount and findings.',
-      },
-      defaultsTo: doctorFormatText,
-    );
+    argParser
+      ..addOption(
+        formatOptionName,
+        help: 'Output format: text (default) or json.',
+        allowed: doctorFormatValues,
+        allowedHelp: {
+          doctorFormatText: 'Human-readable findings (default).',
+          doctorFormatJson: 'JSON object with packageCount and findings.',
+        },
+        defaultsTo: doctorFormatText,
+      )
+      ..addFlag(
+        fatalConstraintMismatchFlagName,
+        negatable: false,
+        help: 'Exit 1 when any constraint.mismatch warning is reported '
+            '(similar to dart analyze --fatal-warnings).',
+      );
   }
 
   /// Option name for `--format`.
   static const formatOptionName = 'format';
+
+  /// Flag name for `--fatal-constraint-mismatch`.
+  static const fatalConstraintMismatchFlagName = 'fatal-constraint-mismatch';
 
   @override
   String get name => 'doctor';
@@ -56,7 +66,10 @@ class DoctorCommand extends RippleCommand {
       stdout.writeln(formatDoctorText(report));
     }
 
-    if (report.hasErrors) {
+    final fatalConstraintMismatch =
+        argResults!.flag(fatalConstraintMismatchFlagName);
+    if (report.hasErrors ||
+        (fatalConstraintMismatch && report.hasConstraintMismatches)) {
       exitCode = 1;
     }
   }

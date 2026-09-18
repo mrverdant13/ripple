@@ -225,6 +225,143 @@ packages:
       expect(help, contains('Report read-only workspace hygiene findings'));
       expect(help, contains('--format'));
       expect(help, contains('json'));
+      expect(help, contains('--fatal-constraint-mismatch'));
+    });
+
+    test('constraint mismatches warn and exit 0 by default', () async {
+      final temp = createTempDir('ripple_doctor_cmd_constraints_warn_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final result = await runRipple(['doctor'], workingDirectory: temp.path);
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(
+        result.stdout,
+        contains(
+          'warning  constraint.mismatch  '
+          'api_client depends on core ^1.0.0 but core is 2.0.0',
+        ),
+      );
+    });
+
+    test('--fatal-constraint-mismatch exits 1 on mismatches', () async {
+      final temp = createTempDir('ripple_doctor_cmd_constraints_fatal_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final result = await runRipple(
+        ['doctor', '--fatal-constraint-mismatch'],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, 1);
+      expect(
+        result.stdout,
+        contains(
+          'warning  constraint.mismatch  '
+          'api_client depends on core ^1.0.0 but core is 2.0.0',
+        ),
+      );
+    });
+
+    test('--format json encodes mismatch fields as warnings', () async {
+      final temp = createTempDir('ripple_doctor_cmd_constraints_json_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final result = await runRipple(
+        ['doctor', '--format', 'json'],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      final decoded =
+          jsonDecode((result.stdout as String).trim()) as Map<String, Object?>;
+      final findings = decoded['findings'] as List<Object?>;
+      final mismatch = findings.cast<Map<String, Object?>>().singleWhere(
+            (f) => f['id'] == 'constraint.mismatch',
+          );
+      expect(mismatch['severity'], 'warning');
+      expect(mismatch['from'], 'api_client');
+      expect(mismatch['to'], 'core');
+      expect(mismatch['constraint'], '^1.0.0');
+      expect(mismatch['version'], '2.0.0');
+    });
+
+    test('doctor with mismatches does not create or edit files', () async {
+      final temp = createTempDir('ripple_doctor_cmd_constraints_ro_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final before = Directory(temp.path)
+          .listSync(recursive: true)
+          .map((e) => e.path)
+          .toSet();
+
+      final result = await runRipple(
+        ['doctor', '--fatal-constraint-mismatch'],
+        workingDirectory: temp.path,
+      );
+      expect(result.exitCode, 1);
+
+      final after = Directory(temp.path)
+          .listSync(recursive: true)
+          .map((e) => e.path)
+          .toSet();
+      expect(after, before);
     });
   });
 }

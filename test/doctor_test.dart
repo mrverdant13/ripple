@@ -272,6 +272,135 @@ packages:
         },
       );
     });
+
+    test('constraint mismatches are absent when ranges allow versions', () {
+      final temp = createTempDir('ripple_doctor_constraints_ok_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final report = runDoctor(loadConfig(temp));
+
+      expect(report.hasErrors, isFalse);
+      expect(report.hasConstraintMismatches, isFalse);
+      expect(
+        report.findings.where((f) => f.id == doctorFindingConstraintMismatch),
+        isEmpty,
+      );
+    });
+
+    test('constraint mismatches are warnings when a range is too narrow', () {
+      final temp = createTempDir('ripple_doctor_constraints_bad_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core: ^1.0.0\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final report = runDoctor(loadConfig(temp));
+
+      expect(report.hasErrors, isFalse);
+      expect(report.hasConstraintMismatches, isTrue);
+      final finding = report.findings.singleWhere(
+        (f) => f.id == doctorFindingConstraintMismatch,
+      );
+      expect(finding.severity, DoctorSeverity.warning);
+      expect(finding.from, 'api_client');
+      expect(finding.to, 'core');
+      expect(finding.constraint, '^1.0.0');
+      expect(finding.version, '2.0.0');
+      expect(
+        finding.message,
+        'api_client depends on core ^1.0.0 but core is 2.0.0',
+      );
+      expect(
+        formatDoctorText(report),
+        'warning  constraint.mismatch  '
+        'api_client depends on core ^1.0.0 but core is 2.0.0',
+      );
+    });
+
+    test('constraint checks skip path dependencies', () {
+      final temp = createTempDir('ripple_doctor_constraints_path_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'core', 'pubspec.yaml'),
+        'name: core\nversion: 2.0.0\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(
+        p.join(temp.path, 'packages', 'api_client', 'pubspec.yaml'),
+        'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
+        'dependencies:\n  core:\n    path: ../core\n',
+      );
+      Directory(p.join(temp.path, '.git')).createSync();
+
+      final report = runDoctor(loadConfig(temp));
+
+      expect(report.hasConstraintMismatches, isFalse);
+      expect(
+        report.findings.where((f) => f.id == doctorFindingConstraintMismatch),
+        isEmpty,
+      );
+    });
+
+    test('formatDoctorJson includes constraint fields', () {
+      const report = DoctorReport(
+        packageCount: 2,
+        findings: [
+          DoctorFinding(
+            id: doctorFindingConstraintMismatch,
+            severity: DoctorSeverity.warning,
+            message: 'api_client depends on core ^1.0.0 but core is 2.0.0',
+            from: 'api_client',
+            to: 'core',
+            constraint: '^1.0.0',
+            version: '2.0.0',
+          ),
+        ],
+      );
+
+      final decoded =
+          jsonDecode(formatDoctorJson(report)) as Map<String, Object?>;
+      final findings = decoded['findings'] as List<Object?>;
+      expect(
+        findings.single,
+        {
+          'id': 'constraint.mismatch',
+          'severity': 'warning',
+          'message': 'api_client depends on core ^1.0.0 but core is 2.0.0',
+          'from': 'api_client',
+          'to': 'core',
+          'constraint': '^1.0.0',
+          'version': '2.0.0',
+        },
+      );
+    });
   });
 
   group('isGitCheckout', () {
