@@ -373,6 +373,8 @@ packages:
         'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
         'dependencies:\n  core: ^1.0.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'api_client'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(loadConfig(temp));
@@ -401,6 +403,8 @@ packages:
         'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
         'dependencies:\n  core: ^1.0.0\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'api_client'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(loadConfig(temp));
@@ -442,6 +446,8 @@ packages:
         'name: api_client\nversion: 1.0.0\nenvironment:\n  sdk: ^3.5.0\n'
         'dependencies:\n  core:\n    path: ../core\n',
       );
+      markPubGetFresh(p.join(temp.path, 'packages', 'core'));
+      markPubGetFresh(p.join(temp.path, 'packages', 'api_client'));
       Directory(p.join(temp.path, '.git')).createSync();
 
       final report = runDoctor(loadConfig(temp));
