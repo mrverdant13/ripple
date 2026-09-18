@@ -789,7 +789,8 @@ dependencies:
       expect(result.stderr, isNot(contains('Unhandled exception')));
     });
 
-    test('--needs-pub-get lists packages with stale pub get metadata', () async {
+    test('--needs-pub-get lists packages with stale pub get metadata',
+        () async {
       final temp =
           Directory.systemTemp.createTempSync('ripple_list_needs_pub_get_');
       addTearDown(() {
@@ -816,7 +817,8 @@ environment:
       writePkg('fresh');
       writePkg('stale');
       final freshConfig = File(
-        p.join(temp.path, 'packages', 'fresh', '.dart_tool', 'package_config.json'),
+        p.join(temp.path, 'packages', 'fresh', '.dart_tool',
+            'package_config.json'),
       )
         ..createSync(recursive: true)
         ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
