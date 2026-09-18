@@ -11,20 +11,30 @@ import 'package:ripple_cli/src/doctor.dart';
 class DoctorCommand extends RippleCommand {
   /// {@macro ripple_cli.doctor_command}
   DoctorCommand() {
-    argParser.addOption(
-      formatOptionName,
-      help: 'Output format: text (default) or json.',
-      allowed: doctorFormatValues,
-      allowedHelp: {
-        doctorFormatText: 'Human-readable findings (default).',
-        doctorFormatJson: 'JSON object with packageCount and findings.',
-      },
-      defaultsTo: doctorFormatText,
-    );
+    argParser
+      ..addOption(
+        formatOptionName,
+        help: 'Output format: text (default) or json.',
+        allowed: doctorFormatValues,
+        allowedHelp: {
+          doctorFormatText: 'Human-readable findings (default).',
+          doctorFormatJson: 'JSON object with packageCount and findings.',
+        },
+        defaultsTo: doctorFormatText,
+      )
+      ..addFlag(
+        constraintsFlagName,
+        negatable: false,
+        help: 'Also report workspace dependency constraints that do not allow '
+            "the target package's current pubspec version.",
+      );
   }
 
   /// Option name for `--format`.
   static const formatOptionName = 'format';
+
+  /// Flag name for `--constraints`.
+  static const constraintsFlagName = 'constraints';
 
   @override
   String get name => 'doctor';
@@ -48,7 +58,10 @@ class DoctorCommand extends RippleCommand {
     }
 
     final config = loadRippleConfig();
-    final report = runDoctor(config);
+    final report = runDoctor(
+      config,
+      checkConstraints: argResults!.flag(constraintsFlagName),
+    );
 
     if (format == doctorFormatJson) {
       stdout.writeln(formatDoctorJson(report));
