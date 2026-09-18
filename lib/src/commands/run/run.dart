@@ -119,6 +119,14 @@ class RunCommand extends RippleCommand {
         valueHelp: 'dart|flutter',
         allowed: packageSdkValues,
       )
+      ..addFlag(
+        needsPubGetFlagName,
+        help: 'Only packages whose dart pub get looks stale: missing '
+            '.dart_tool/package_config.json, or that file is older than the '
+            'package pubspec.yaml / pubspec.lock. Valid only for exec: '
+            'scripts.',
+        negatable: false,
+      )
       ..addOption(
         overrideOptionName,
         help: 'Overlay descriptor: none, default, or file:<path>. '
@@ -171,6 +179,9 @@ class RunCommand extends RippleCommand {
 
   /// Option name for `--sdk`.
   static const sdkOptionName = 'sdk';
+
+  /// Flag name for `--needs-pub-get`.
+  static const needsPubGetFlagName = 'needs-pub-get';
 
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
@@ -239,6 +250,7 @@ class RunCommand extends RippleCommand {
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
       sdk: argResults!.option(sdkOptionName),
+      needsPubGet: argResults!.flag(needsPubGetFlagName) ? true : null,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
