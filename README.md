@@ -93,6 +93,12 @@ ripple --version
    ripple scripts
    ```
 
+6. **Check workspace hygiene** (read-only; does not create or edit files):
+
+   ```bash
+   ripple doctor
+   ```
+
 Ripple walks upward from the current working directory until it finds
 `ripple.yaml`; that file's directory is the Ripple root.
 
@@ -722,6 +728,41 @@ ripple scripts
 The command takes no flags other than `--help`. Unknown options and extra
 arguments are usage errors. Running outside any `ripple.yaml` ancestry fails
 with the same config-not-found error as other commands.
+
+### `ripple doctor`
+
+Report read-only workspace hygiene findings for the Ripple root. Doctor never
+creates or edits files.
+
+Default output is human text. With no findings:
+
+```text
+OK: 6 packages
+```
+
+Each finding is one line: severity, id, then a path or message:
+
+```text
+warning  include.missed  scratch/orphan
+error  git.missing  no git checkout at Ripple root
+```
+
+Exit **1** when any finding has severity `error`; warnings alone exit **0**.
+
+| Id | Severity | Meaning |
+| --- | --- | --- |
+| `include.missed` | warning | A `pubspec.yaml` on disk is not selected by `packages.include` / `exclude` |
+| `git.missing` | error if any script/preset/override uses a `changed` filter; otherwise warning | No `.git` checkout at the Ripple root |
+| `replacement.missing` | warning | The first token of a `replacements.dart` or `replacements.flutter` value is not found on `PATH` |
+| `resolution.mix` | warning | Some selected packages set `resolution: workspace` and others do not |
+
+`--format json` prints a JSON object with `packageCount` and a `findings` array
+(`id`, `severity`, `message`, optional `path`).
+
+```bash
+ripple doctor
+ripple doctor --format json
+```
 
 ## Environment variables
 
