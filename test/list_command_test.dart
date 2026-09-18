@@ -509,7 +509,7 @@ $deps
       ]);
     });
 
-    test('--changed staged / unstaged / since-tag select split path sets',
+    test('--changed staged / unstaged / since-latest-tag select split path sets',
         () async {
       final temp = Directory.systemTemp.createTempSync('ripple_list_kinds_');
       addTearDown(() {
@@ -567,7 +567,7 @@ environment:
       await git(['commit', '-m', 'change core']);
 
       final sinceTag = await runRipple(
-        ['list', '--changed', 'since-tag'],
+        ['list', '--changed', 'since-latest-tag'],
         workingDirectory: temp.path,
       );
       expect(sinceTag.exitCode, 0, reason: sinceTag.stderr as String);

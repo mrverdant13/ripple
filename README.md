@@ -469,7 +469,7 @@ not multiple values on the same leaf:
 | `since:<ref>` | Commit-tree diff `{ref}...HEAD` (typical CI: `since:origin/main`) |
 | `range:<A..B>` / `range:<A...B>` | Explicit git range passed to `git diff` |
 | `workdir:<tree-ish>` | Working tree vs tree-ish (tracked dirty **and** untracked; local: `workdir:HEAD`) |
-| `since-tag` | Same as `since:<tag>` for the latest reachable tag from `HEAD` (errors if none) |
+| `since-latest-tag` | Same as `since:<tag>` for the latest reachable tag from `HEAD` (errors if none) |
 | `staged` | Staged index vs `HEAD` only |
 | `unstaged` | Tracked unstaged vs the index |
 | `untracked` | Untracked files (`git ls-files --others --exclude-standard`) |
@@ -605,7 +605,7 @@ ripple list --changed since:origin/main --dependents
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
 | `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
-| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-tag` / `staged` / `unstaged` / `untracked`). Pass at most once. |
+| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Pass at most once. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
 

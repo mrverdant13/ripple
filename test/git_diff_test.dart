@@ -23,8 +23,8 @@ void main() {
       );
     });
 
-    test('accepts bare since-tag, staged, unstaged, and untracked', () {
-      expect(parseChangedDescriptor('since-tag'), isA<ChangedSinceTag>());
+    test('accepts bare since-latest-tag, staged, unstaged, and untracked', () {
+      expect(parseChangedDescriptor('since-latest-tag'), isA<ChangedSinceLatestTag>());
       expect(parseChangedDescriptor('staged'), isA<ChangedStaged>());
       expect(parseChangedDescriptor('unstaged'), isA<ChangedUnstaged>());
       expect(parseChangedDescriptor('untracked'), isA<ChangedUntracked>());
@@ -32,7 +32,7 @@ void main() {
 
     test('accepts bare kinds written with an empty payload', () {
       expect(parseChangedDescriptor('staged:'), isA<ChangedStaged>());
-      expect(parseChangedDescriptor('since-tag:'), isA<ChangedSinceTag>());
+      expect(parseChangedDescriptor('since-latest-tag:'), isA<ChangedSinceLatestTag>());
     });
 
     test('rejects payloads on bare kinds', () {
@@ -204,7 +204,7 @@ packages:
       expect(owners, {'packages/core'});
     });
 
-    test('since-tag matches since:<latest-tag> after tagged baseline', () async {
+    test('since-latest-tag matches since:<latest-tag> after tagged baseline', () async {
       await _git(tempDir.path, args: ['tag', 'v1.0.0']);
       await File(p.join(uiDir.path, 'lib', 'b.dart'))
           .writeAsString('// after tag\n');
@@ -219,7 +219,7 @@ packages:
       final packages = discoverPackages(config);
       final sinceTag = changedPackageRelativePaths(
         rootPath: config.rootPath,
-        descriptor: const ChangedSinceTag(),
+        descriptor: const ChangedSinceLatestTag(),
         packages: packages,
       );
       final sinceNamed = changedPackageRelativePaths(
@@ -232,14 +232,14 @@ packages:
       expect(sinceTag, sinceNamed);
     });
 
-    test('since-tag fails when no tags exist', () async {
+    test('since-latest-tag fails when no tags exist', () async {
       final config = loadRippleConfig(start: tempDir);
       final packages = discoverPackages(config);
 
       expect(
         () => changedPackageRelativePaths(
           rootPath: config.rootPath,
-          descriptor: const ChangedSinceTag(),
+          descriptor: const ChangedSinceLatestTag(),
           packages: packages,
         ),
         throwsA(

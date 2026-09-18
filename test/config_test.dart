@@ -1302,10 +1302,10 @@ scripts:
     exec: dart analyze .
     filters:
       - changed: staged
-  sinceTag:
+  sinceLatestTag:
     exec: dart analyze .
     filters:
-      - changed: since-tag
+      - changed: since-latest-tag
 ''',
         rootPath: '/r',
       );
@@ -1314,8 +1314,8 @@ scripts:
         const FilterAnd([FilterChanged('staged')]),
       );
       expect(
-        config.scripts['sinceTag']!.filters,
-        const FilterAnd([FilterChanged('since-tag')]),
+        config.scripts['sinceLatestTag']!.filters,
+        const FilterAnd([FilterChanged('since-latest-tag')]),
       );
     });
 

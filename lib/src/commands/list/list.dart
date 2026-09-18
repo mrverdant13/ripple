@@ -82,7 +82,7 @@ class ListCommand extends RippleCommand {
       ..addOption(
         changedOptionName,
         help: 'Only packages changed per a git descriptor: since:<ref>, '
-            'range:<A..B>, workdir:<tree-ish>, or bare since-tag / staged / '
+            'range:<A..B>, workdir:<tree-ish>, or bare since-latest-tag / staged / '
             'unstaged / untracked. Pass at most once.',
         valueHelp: 'descriptor',
       )

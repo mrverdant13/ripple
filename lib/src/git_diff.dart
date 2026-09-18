@@ -43,9 +43,9 @@ final class ChangedWorkdir extends ChangedDescriptor {
 }
 
 /// Diff from the latest reachable git tag to `HEAD`.
-final class ChangedSinceTag extends ChangedDescriptor {
-  /// Creates a `since-tag` descriptor.
-  const ChangedSinceTag();
+final class ChangedSinceLatestTag extends ChangedDescriptor {
+  /// Creates a `since-latest-tag` descriptor.
+  const ChangedSinceLatestTag();
 }
 
 /// Staged index changes vs `HEAD` only.
@@ -75,7 +75,7 @@ const changedValueDescriptorKinds = ['since', 'range', 'workdir'];
 
 /// Bare descriptor kinds (no payload after the kind name).
 const changedBareDescriptorKinds = [
-  'since-tag',
+  'since-latest-tag',
   'staged',
   'unstaged',
   'untracked',
@@ -160,8 +160,8 @@ ChangedDescriptor parseChangedDescriptor(String value) {
 
 ChangedDescriptor _parseBareChangedDescriptor(String kind) {
   switch (kind) {
-    case 'since-tag':
-      return const ChangedSinceTag();
+    case 'since-latest-tag':
+      return const ChangedSinceLatestTag();
     case 'staged':
       return const ChangedStaged();
     case 'unstaged':
@@ -218,7 +218,7 @@ Set<String> changedPackageRelativePaths({
         rootPath: rootPath,
         treeIsh: treeIsh,
       ),
-    ChangedSinceTag() => _pathsFromSinceTag(rootPath: rootPath),
+    ChangedSinceLatestTag() => _pathsFromSinceLatestTag(rootPath: rootPath),
     ChangedStaged() => _pathsFromStaged(rootPath: rootPath),
     ChangedUnstaged() => _pathsFromUnstaged(rootPath: rootPath),
     ChangedUntracked() => _pathsFromUntracked(rootPath: rootPath),
@@ -346,7 +346,7 @@ Set<String> _pathsFromWorkdir({
   };
 }
 
-Set<String> _pathsFromSinceTag({required String rootPath}) {
+Set<String> _pathsFromSinceLatestTag({required String rootPath}) {
   _ensureGitRepository(rootPath);
   _verifyRevision(rootPath, 'HEAD');
   final tag = _latestReachableTag(rootPath);
@@ -367,13 +367,13 @@ String _latestReachableTag(String rootPath) {
   );
   if (result.exitCode != 0) {
     throw const RippleConfigException(
-      'Cannot apply changed filter since-tag: no reachable git tag from HEAD',
+      'Cannot apply changed filter since-latest-tag: no reachable git tag from HEAD',
     );
   }
   final tag = (result.stdout as String).trim();
   if (tag.isEmpty) {
     throw const RippleConfigException(
-      'Cannot apply changed filter since-tag: no reachable git tag from HEAD',
+      'Cannot apply changed filter since-latest-tag: no reachable git tag from HEAD',
     );
   }
   return tag;
