@@ -93,6 +93,12 @@ ripple --version
    ripple scripts
    ```
 
+6. **Check workspace hygiene** (read-only; does not create or edit files):
+
+   ```bash
+   ripple doctor
+   ```
+
 Ripple walks upward from the current working directory until it finds
 `ripple.yaml`; that file's directory is the Ripple root.
 
@@ -433,11 +439,27 @@ scripts:
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 | `changed` | single descriptor string | Package had path changes per git (see below) |
 | `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
+| `needsPubGet` | boolean | `true` = `.dart_tool/package_config.json` missing or older than that package's `pubspec.yaml` / `pubspec.lock`; `false` = complement |
 
 `sdk: flutter` means the package declares `environment.flutter` in
 `pubspec.yaml`. A `flutter:` SDK dependency alone does **not** count (use
 `dependsOn: [flutter]` for that). `sdk: dart` is the complement. Pass at most
 one `--sdk` value (two values would be an empty set).
+
+`needsPubGet` compares **per-package** files only (no root workspace lock).
+Use it to run `dart pub get` only where resolution metadata looks stale, for
+example:
+
+```yaml
+scripts:
+  bootstrap:
+    exec: dart pub get
+    filters:
+      - needsPubGet: true
+```
+
+There is no built-in `analyze` command. Prefer a script such as
+`{{dart}} analyze --no-pub` when packages are already resolved.
 
 `changed` accepts **one** descriptor (not a list). Combine modes with `or:`,
 not multiple values on the same leaf:
@@ -561,6 +583,7 @@ ripple list --depends-on path
 ripple list --preset e2eTestable
 ripple list --sdk dart
 ripple list --sdk flutter --group apps
+ripple list --needs-pub-get
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
 ripple list --match core --dependents
@@ -581,6 +604,7 @@ ripple list --changed since:origin/main --dependents
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
+| `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-tag` / `staged` / `unstaged` / `untracked`). Pass at most once. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
@@ -694,7 +718,7 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--no-dir-exists`, `--no-file-exists`, `--depends-on`,
-  `--preset`, `--changed`, `--sdk`, and
+  `--preset`, `--changed`, `--sdk`, `--needs-pub-get`, and
   `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
   rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
   banners use `(root)`; each step also gets command start/end banners stamped
@@ -746,6 +770,61 @@ The command takes no flags other than `--help`. Unknown options and extra
 arguments are usage errors. Running outside any `ripple.yaml` ancestry fails
 with the same config-not-found error as other commands.
 
+### `ripple doctor`
+
+Report read-only workspace hygiene findings for the Ripple root. Doctor never
+creates or edits files.
+
+Default output is human text. With no findings:
+
+```text
+OK: 6 packages
+```
+
+Each finding is one line: severity, id, then a path or message:
+
+```text
+warning  include.missed  scratch/orphan
+error  git.missing  no git checkout at Ripple root
+```
+
+Exit **1** when any finding has severity `error`; warnings alone exit **0**,
+except `--fatal-constraint-mismatch` also exits **1** when any
+`constraint.mismatch` warning is present.
+
+| Id | Severity | Meaning |
+| --- | --- | --- |
+| `include.missed` | warning | A `pubspec.yaml` on disk is not selected by `packages.include` / `exclude` |
+| `git.missing` | error if any script/preset/override uses a `changed` filter; otherwise warning | No `.git` checkout at the Ripple root |
+| `replacement.missing` | warning | The first token of a `replacements.dart` or `replacements.flutter` value is not found on `PATH` |
+| `resolution.mix` | warning | Some selected packages set `resolution: workspace` and others do not |
+| `constraint.mismatch` | warning | A selected package's hosted-style dependency on another selected package does not allow that package's current `version:` |
+| `pub.get.stale` | warning | A selected package's `.dart_tool/package_config.json` is missing or older than that package's `pubspec.yaml` / `pubspec.lock` |
+
+`--format json` prints a JSON object with `packageCount` and a `findings` array
+(`id`, `severity`, `message`, optional `path`). Constraint mismatches also
+include `from`, `to`, `constraint`, and `version`.
+
+Doctor always checks workspace dependency constraints. For each workspace edge
+`A → B` where A's pubspec declares a hosted-style constraint on `B` (for
+example `core: ^1.0.0`), a `constraint.mismatch` warning is emitted when that
+constraint does not allow B's current `version:`. Path, git, and SDK
+dependencies are skipped. Warnings alone still exit **0**; pass
+`--fatal-constraint-mismatch` (like `dart analyze --fatal-warnings`) to exit
+**1** when any `constraint.mismatch` finding is present. Doctor never rewrites
+pubspecs.
+
+```bash
+ripple doctor
+ripple doctor --format json
+ripple doctor --fatal-constraint-mismatch
+```
+
+Example mismatch:
+
+```text
+warning  constraint.mismatch  api_client depends on core ^1.0.0 but core is 2.0.0
+```
 ## Environment variables
 
 Child processes receive these variables in the environment (and as `$VAR` /

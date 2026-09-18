@@ -329,6 +329,7 @@ environment:
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--sdk'));
+      expect(help, contains('--needs-pub-get'));
       expect(help, contains('--dependents'));
       expect(help, contains('--dependencies'));
       expect(help, contains('--format'));
@@ -881,6 +882,54 @@ dependencies:
       expect(result.exitCode, isNot(0));
       expect(result.stderr, contains('sdk'));
       expect(result.stderr, isNot(contains('Unhandled exception')));
+    });
+
+    test('--needs-pub-get lists packages with stale pub get metadata',
+        () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_needs_pub_get_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+''');
+      void writePkg(String dir) {
+        final packageDir = Directory(p.join(temp.path, 'packages', dir))
+          ..createSync(recursive: true);
+        File(p.join(packageDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: $dir
+environment:
+  sdk: ^3.5.0
+''');
+      }
+
+      writePkg('fresh');
+      writePkg('stale');
+      final freshConfig = File(
+        p.join(temp.path, 'packages', 'fresh', '.dart_tool',
+            'package_config.json'),
+      )
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      final freshPubspec =
+          File(p.join(temp.path, 'packages', 'fresh', 'pubspec.yaml'));
+      freshConfig.setLastModifiedSync(
+        freshPubspec.lastModifiedSync().add(const Duration(seconds: 2)),
+      );
+
+      final result = await runRipple(
+        ['list', '--needs-pub-get'],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['packages/stale']);
     });
   });
 }

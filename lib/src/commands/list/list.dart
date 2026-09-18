@@ -95,6 +95,13 @@ class ListCommand extends RippleCommand {
         allowed: packageSdkValues,
       )
       ..addFlag(
+        needsPubGetFlagName,
+        help: 'Only packages whose dart pub get looks stale: missing '
+            '.dart_tool/package_config.json, or that file is older than the '
+            'package pubspec.yaml / pubspec.lock.',
+        negatable: false,
+      )
+      ..addFlag(
         dependentsFlagName,
         help: 'Include transitive workspace dependents of the seed packages '
             '(exhaustive reverse closure).',
@@ -144,6 +151,9 @@ class ListCommand extends RippleCommand {
   /// Option name for `--sdk`.
   static const sdkOptionName = 'sdk';
 
+  /// Flag name for `--needs-pub-get`.
+  static const needsPubGetFlagName = 'needs-pub-get';
+
   /// Flag name for `--dependents`.
   static const dependentsFlagName = 'dependents';
 
@@ -188,6 +198,7 @@ class ListCommand extends RippleCommand {
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
       sdk: argResults!.option(sdkOptionName),
+      needsPubGet: argResults!.flag(needsPubGetFlagName) ? true : null,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );

@@ -1362,6 +1362,53 @@ scripts:
       );
     });
 
+    test('parses needsPubGet filter on exec scripts', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  bootstrap:
+    exec: dart pub get
+    filters:
+      - needsPubGet: true
+  skipFresh:
+    exec: dart analyze .
+    filters:
+      - needsPubGet: false
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['bootstrap']!.filters,
+        const FilterAnd([FilterNeedsPubGet(true)]),
+      );
+      expect(
+        config.scripts['skipFresh']!.filters,
+        const FilterAnd([FilterNeedsPubGet(false)]),
+      );
+    });
+
+    test('rejects non-boolean needsPubGet filter', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart pub get
+    filters:
+      - needsPubGet: yes
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('needsPubGet` must be a boolean'),
+          ),
+        ),
+      );
+    });
+
     test('parses noDirExists and noFileExists filters on exec scripts', () {
       final config = parseRippleYaml(
         '''

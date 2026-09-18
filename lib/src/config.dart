@@ -250,6 +250,28 @@ final class FilterSdk extends FilterExpr {
   int get hashCode => sdk.hashCode;
 }
 
+/// Whether the package's `dart pub get` output looks stale.
+///
+/// When [needsPubGet] is `true`, the package matches if
+/// `.dart_tool/package_config.json` is missing or older than that package's
+/// `pubspec.yaml` / `pubspec.lock`. When `false`, it matches the complement.
+/// Comparison is per-package files only (no root workspace lock).
+final class FilterNeedsPubGet extends FilterExpr {
+  /// Creates a `needsPubGet` leaf.
+  const FilterNeedsPubGet(this.needsPubGet);
+
+  /// When `true`, match packages that need `pub get`; when `false`, match
+  /// packages that do not.
+  final bool needsPubGet;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FilterNeedsPubGet && other.needsPubGet == needsPubGet;
+
+  @override
+  int get hashCode => needsPubGet.hashCode;
+}
+
 /// Reference to a named expression under `packages.filtersPresets`.
 ///
 /// Resolved (with cycle detection) before evaluation; see
@@ -1644,7 +1666,8 @@ FilterExpr _filterNodeFromValue(
       'FilterExpr',
       'Invalid filter at $path: expected exactly one key '
           '(and, or, preset, changed, match, noMatch, group, dependsOn, '
-          'dirExists, fileExists, noDirExists, noFileExists, sdk), '
+          'dirExists, fileExists, noDirExists, noFileExists, sdk, '
+          'needsPubGet), '
           'found ${map.length}',
     );
   }
@@ -1772,6 +1795,17 @@ FilterExpr _filterNodeFromValue(
         );
       }
       return FilterSdk(sdk);
+    case 'needsPubGet':
+      final needsValue = entry.value;
+      if (needsValue is! bool) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `needsPubGet` must be a boolean',
+        );
+      }
+      return FilterNeedsPubGet(needsValue);
     default:
       throw CheckedFromJsonException(
         parent,
@@ -1779,7 +1813,8 @@ FilterExpr _filterNodeFromValue(
         'FilterExpr',
         'Invalid filter at $path: unknown key "$key". Expected one of: '
             'and, or, preset, changed, match, noMatch, group, dependsOn, '
-            'dirExists, fileExists, noDirExists, noFileExists, sdk',
+            'dirExists, fileExists, noDirExists, noFileExists, sdk, '
+            'needsPubGet',
       );
   }
 }
