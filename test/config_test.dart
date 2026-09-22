@@ -39,7 +39,10 @@ scripts:
 
       expect(config.rootPath, '/tmp/demo');
       expect(config.name, 'demo');
-      expect(config.packages.include, ['packages/*', 'tool']);
+      expect(config.packages.include, [
+        PackageIncludeGlob('packages/*'),
+        PackageIncludeGlob('tool'),
+      ]);
       expect(config.packages.exclude, ['**/example/**']);
       expect(config.packages.groups, {
         'core': ['packages/a', 'packages/b'],
@@ -1431,6 +1434,44 @@ packages:
       ]);
     });
 
+    test('parses workspace include entries', () {
+      final config = parseRippleYaml(
+        '''
+packages:
+  include:
+    - packages/standalone_*
+    - workspace: packages/app_ws
+    - packages/other/*
+''',
+        rootPath: '/r',
+      );
+      expect(config.packages.include, [
+        PackageIncludeGlob('packages/standalone_*'),
+        PackageIncludeWorkspace('packages/app_ws'),
+        PackageIncludeGlob('packages/other/*'),
+      ]);
+    });
+
+    test('rejects invalid workspace include maps', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  include:
+    - workspace: ''
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('workspace must be a non-empty string'),
+          ),
+        ),
+      );
+    });
+
     test('parses sdk filter on exec scripts', () {
       final config = parseRippleYaml(
         '''
@@ -2079,7 +2120,7 @@ scripts:
       final config = loadRippleConfig(start: nested);
       expect(config.rootPath, root.path);
       expect(config.name, 'nested-demo');
-      expect(config.packages.include, ['packages/*']);
+      expect(config.packages.include, [PackageIncludeGlob('packages/*')]);
       expect(config.scripts['format.ci']!.kind, ScriptKind.run);
     });
 

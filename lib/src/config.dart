@@ -428,6 +428,44 @@ class RippleScript {
   final GraphExpansionFilters? dependenciesFilters;
 }
 
+/// One `packages.include` entry: a path glob or a Dart workspace expansion.
+sealed class PackageIncludeEntry {
+  /// Creates an include entry.
+  const PackageIncludeEntry();
+}
+
+/// Include directories matching a glob relative to the Ripple root.
+final class PackageIncludeGlob extends PackageIncludeEntry {
+  /// Creates a glob include entry.
+  const PackageIncludeGlob(this.pattern);
+
+  /// Glob pattern (posix `/` separators) relative to the Ripple root.
+  final String pattern;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PackageIncludeGlob && other.pattern == pattern;
+
+  @override
+  int get hashCode => pattern.hashCode;
+}
+
+/// Include a Dart workspace root and all of its transitive members.
+final class PackageIncludeWorkspace extends PackageIncludeEntry {
+  /// Creates a workspace include entry for [path] (Ripple-root relative).
+  const PackageIncludeWorkspace(this.path);
+
+  /// Repo-relative path to the Dart workspace root directory.
+  final String path;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PackageIncludeWorkspace && other.path == path;
+
+  @override
+  int get hashCode => path.hashCode;
+}
+
 /// Package discovery settings under `packages:`.
 class RipplePackages {
   /// Creates package include/exclude/group/preset settings.
@@ -439,8 +477,9 @@ class RipplePackages {
     this.changedIgnore = const [],
   });
 
-  /// Glob patterns (relative to the Ripple root) for candidate package dirs.
-  final List<String> include;
+  /// Include entries (globs and/or `workspace:` expansions) relative to the
+  /// Ripple root.
+  final List<PackageIncludeEntry> include;
 
   /// Glob patterns to subtract from include matches.
   final List<String> exclude;
@@ -1063,12 +1102,66 @@ RipplePackages _packagesFromValue(
   }
   final Map<dynamic, dynamic> map = value;
   return RipplePackages(
-    include: _stringList(map, 'include', 'RipplePackages'),
+    include: _includeEntriesFromValue(map['include'], map),
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
     groups: _groupsFromValue(map['groups'], map),
     filtersPresets: _filtersPresetsFromValue(map['filtersPresets'], map),
     changedIgnore: _stringList(map, 'changedIgnore', 'RipplePackages'),
   );
+}
+
+List<PackageIncludeEntry> _includeEntriesFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const [];
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'include',
+      'RipplePackages',
+      'Expected a list of glob strings and/or `{ workspace: <path> }` maps',
+    );
+  }
+  final entries = <PackageIncludeEntry>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is String) {
+      entries.add(PackageIncludeGlob(element));
+      continue;
+    }
+    if (element is Map) {
+      final Map<dynamic, dynamic> map = element;
+      if (map.length != 1 || !map.containsKey('workspace')) {
+        throw CheckedFromJsonException(
+          parent,
+          'include',
+          'RipplePackages',
+          'include[$i] map must be a single-key `{ workspace: <path> }`',
+        );
+      }
+      final path = map['workspace'];
+      if (path is! String || path.trim().isEmpty) {
+        throw CheckedFromJsonException(
+          parent,
+          'include',
+          'RipplePackages',
+          'include[$i].workspace must be a non-empty string path',
+        );
+      }
+      entries.add(PackageIncludeWorkspace(path.trim()));
+      continue;
+    }
+    throw CheckedFromJsonException(
+      parent,
+      'include',
+      'RipplePackages',
+      'include[$i] must be a glob string or `{ workspace: <path> }`',
+    );
+  }
+  return List<PackageIncludeEntry>.unmodifiable(entries);
 }
 
 Map<String, FilterExpr> _filtersPresetsFromValue(

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import 'package:pubspec_parse/pubspec_parse.dart';
 
 import 'config.dart';
+import 'dart_workspace.dart';
 
 /// A Dart package discovered under a Ripple root.
 ///
@@ -52,15 +53,26 @@ class RipplePackage {
   int get hashCode => Object.hash(name, path, relativePath);
 }
 
-/// Expands [RipplePackages.include] globs under [config.rootPath], keeps
+/// Expands [RipplePackages.include] entries under [config.rootPath], keeps
 /// directories that contain `pubspec.yaml`, then subtracts
 /// [RipplePackages.exclude] matches.
+///
+/// Glob entries match directories as before. `workspace:` entries expand to the
+/// Dart workspace root and all transitive members.
+///
+/// Always validates Dart workspaces under the Ripple root (including when
+/// include is empty) so invalid intermediate standalones hard-fail every
+/// command that discovers packages.
 ///
 /// Returns an empty list when include is empty or nothing matches. Order is
 /// stable by [RipplePackage.relativePath] (filesystem / glob order is not
 /// relied upon for v1 dependency scheduling).
 List<RipplePackage> discoverPackages(RippleConfig config) {
   final rootPath = p.normalize(config.rootPath);
+
+  // Hard-fail invalid Dart workspace layouts under the Ripple root.
+  detectDartWorkspaces(rootPath);
+
   final include = config.packages.include;
   if (include.isEmpty) {
     return const [];
@@ -71,19 +83,28 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
   final listContext = p.Context(style: p.style, current: rootPath);
   final candidates = <String, RipplePackage>{};
 
-  for (final pattern in include) {
-    // Glob.listSync walks descendants of [rootPath] only; patterns that match
-    // '.' (e.g. '**', '.') must also consider the Ripple root itself.
-    if (_posixGlob(pattern).matches('.')) {
-      _tryAddPackage(candidates, rootPath, rootPath);
-    }
+  for (final entry in include) {
+    switch (entry) {
+      case PackageIncludeGlob(:final pattern):
+        // Glob.listSync walks descendants of [rootPath] only; patterns that
+        // match '.' (e.g. '**', '.') must also consider the Ripple root itself.
+        if (_posixGlob(pattern).matches('.')) {
+          _tryAddPackage(candidates, rootPath, rootPath);
+        }
 
-    final glob = Glob(pattern, context: listContext);
-    for (final entity in glob.listSync(root: rootPath, followLinks: false)) {
-      if (entity is! Directory) {
-        continue;
-      }
-      _tryAddPackage(candidates, rootPath, p.normalize(entity.path));
+        final glob = Glob(pattern, context: listContext);
+        for (final entity in glob.listSync(root: rootPath, followLinks: false)) {
+          if (entity is! Directory) {
+            continue;
+          }
+          _tryAddPackage(candidates, rootPath, p.normalize(entity.path));
+        }
+      case PackageIncludeWorkspace(:final path):
+        final workspaceRoot = p.normalize(p.join(rootPath, path));
+        final workspace = loadDartWorkspace(workspaceRoot);
+        for (final memberPath in workspace.memberPaths) {
+          _tryAddPackage(candidates, rootPath, memberPath);
+        }
     }
   }
 
