@@ -1497,32 +1497,35 @@ scripts:
       );
     });
 
-    test('parses needsPubGet filter on exec scripts', () {
+    test('parses pubGet filter on exec scripts', () {
       final config = parseRippleYaml(
         '''
 scripts:
   bootstrap:
     exec: dart pub get
     filters:
-      - needsPubGet: true
+      - pubGet: missing
   skipFresh:
     exec: dart analyze .
     filters:
-      - needsPubGet: false
+      - pubGet: resolved
+        asOf: start
 ''',
         rootPath: '/r',
       );
       expect(
         config.scripts['bootstrap']!.filters,
-        const FilterAnd([FilterNeedsPubGet(true)]),
+        const FilterAnd([FilterPubGet(state: PubGetState.missing)]),
       );
       expect(
         config.scripts['skipFresh']!.filters,
-        const FilterAnd([FilterNeedsPubGet(false)]),
+        const FilterAnd([
+          FilterPubGet(state: PubGetState.resolved, asOf: PubGetAsOf.start),
+        ]),
       );
     });
 
-    test('rejects non-boolean needsPubGet filter', () {
+    test('rejects invalid pubGet filter values', () {
       expect(
         () => parseRippleYaml(
           '''
@@ -1530,7 +1533,7 @@ scripts:
   bad:
     exec: dart pub get
     filters:
-      - needsPubGet: yes
+      - pubGet: stale
 ''',
           rootPath: '/r',
         ),
@@ -1538,7 +1541,7 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            contains('needsPubGet` must be a boolean'),
+            contains('pubGet` must be `missing` or `resolved`'),
           ),
         ),
       );

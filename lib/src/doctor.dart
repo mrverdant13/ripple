@@ -10,6 +10,7 @@ import 'package:pubspec_parse/pubspec_parse.dart';
 import 'package:yaml/yaml.dart';
 
 import 'config.dart';
+import 'dart_workspace.dart';
 import 'discovery.dart';
 import 'filters.dart';
 import 'graph.dart';
@@ -142,7 +143,7 @@ DoctorReport runDoctor(
     ),
     if (_resolutionMixFinding(packages) case final finding?) finding,
     ..._constraintMismatchFindings(packages),
-    ..._pubGetStaleFindings(packages),
+    ..._pubGetStaleFindings(packages, rootPath: config.rootPath),
   ];
 
   return DoctorReport(
@@ -353,8 +354,9 @@ bool _expressionUsesChanged(
           FilterGroup() ||
           FilterMatch() ||
           FilterNoMatch() ||
+          FilterChanged() ||
           FilterSdk() ||
-          FilterNeedsPubGet():
+          FilterPubGet():
       return false;
   }
 }
@@ -493,10 +495,20 @@ List<DoctorFinding> _constraintMismatchFindings(List<RipplePackage> packages) {
   return findings;
 }
 
-List<DoctorFinding> _pubGetStaleFindings(List<RipplePackage> packages) {
+List<DoctorFinding> _pubGetStaleFindings(
+  List<RipplePackage> packages, {
+  required String rootPath,
+}) {
+  if (packages.isEmpty) {
+    return const [];
+  }
+
+  final workspaces = detectDartWorkspaces(rootPath);
+
   final stale = [
     for (final package in packages)
-      if (packageNeedsPubGet(package)) package.relativePath,
+      if (packagePubGetIsMissing(package, workspaces: workspaces))
+        package.relativePath,
   ]..sort();
 
   return [
@@ -505,8 +517,8 @@ List<DoctorFinding> _pubGetStaleFindings(List<RipplePackage> packages) {
         id: doctorFindingPubGetStale,
         severity: DoctorSeverity.warning,
         message:
-            'dart pub get looks stale (.dart_tool/package_config.json missing '
-            'or older than pubspec.yaml / pubspec.lock)',
+            'dart pub get looks stale (package_config missing or older than '
+            'pubspec.yaml / pubspec.lock at the resolution root)',
         path: relative,
       ),
   ];

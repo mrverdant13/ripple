@@ -903,10 +903,11 @@ dependencies:
     });
   });
 
-  group('filterPackages — needsPubGet', () {
+  group('filterPackages — pubGet', () {
     late Directory temp;
     late RippleConfig pubGetConfig;
     late List<RipplePackage> pubGetPackages;
+    late PubGetMatchContext pubGetContext;
 
     void writePackageConfig(String packageDir, {required DateTime modified}) {
       final file = File(
@@ -919,7 +920,7 @@ dependencies:
     }
 
     setUp(() {
-      temp = Directory.systemTemp.createTempSync('ripple_needs_pub_get_');
+      temp = Directory.systemTemp.createTempSync('ripple_pub_get_');
       File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
 packages:
   include:
@@ -982,6 +983,10 @@ environment:
 
       pubGetConfig = loadRippleConfig(start: temp);
       pubGetPackages = discoverPackages(pubGetConfig);
+      pubGetContext = buildPubGetMatchContext(
+        rippleRootPath: pubGetConfig.rootPath,
+        packages: pubGetPackages,
+      );
     });
 
     tearDown(() {
@@ -990,11 +995,12 @@ environment:
       }
     });
 
-    test('needsPubGet true matches missing or older package_config', () {
+    test('pubGet missing matches missing or older package_config', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: criteria(const FilterNeedsPubGet(true)),
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: pubGetContext,
       );
 
       expect(
@@ -1003,32 +1009,142 @@ environment:
       );
     });
 
-    test('needsPubGet false matches fresh packages only', () {
+    test('pubGet resolved matches fresh packages only', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: criteria(const FilterNeedsPubGet(false)),
+        criteria: criteria(const FilterPubGet(state: PubGetState.resolved)),
+        pubGetContext: pubGetContext,
       );
 
       expect(names(filtered), ['fresh']);
     });
 
-    test('packageNeedsPubGet is false after fresh package_config', () {
+    test('packagePubGetIsMissing is false after fresh package_config', () {
       final fresh = pubGetPackages.singleWhere((p) => p.name == 'fresh');
-      expect(packageNeedsPubGet(fresh), isFalse);
+      expect(packagePubGetIsMissing(fresh), isFalse);
     });
 
-    test('fromNameGlobs needsPubGet true builds the leaf', () {
+    test('fromNameGlobs pubGet missing builds the leaf', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: PackageFilterCriteria.fromNameGlobs(needsPubGet: true),
+        criteria: PackageFilterCriteria.fromNameGlobs(
+          pubGet: const FilterPubGet(state: PubGetState.missing),
+        ),
+        pubGetContext: pubGetContext,
       );
 
       expect(
         names(filtered),
         ['missing_config', 'stale_lock', 'stale_pubspec'],
       );
+    });
+
+    test('asOf start keeps snapshot after filesystem changes', () {
+      final filteredStart = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(
+          const FilterPubGet(
+            state: PubGetState.missing,
+            asOf: PubGetAsOf.start,
+          ),
+        ),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(filteredStart), contains('missing_config'));
+
+      // Make missing_config look fresh after the snapshot.
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'missing_config'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      final stillStart = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(
+          const FilterPubGet(
+            state: PubGetState.missing,
+            asOf: PubGetAsOf.start,
+          ),
+        ),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(stillStart), contains('missing_config'));
+
+      final live = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(live), isNot(contains('missing_config')));
+    });
+
+    test('workspace members share resolution root freshness', () {
+      final wsTemp = Directory.systemTemp.createTempSync('ripple_pub_ws_');
+      addTearDown(() {
+        if (wsTemp.existsSync()) {
+          wsTemp.deleteSync(recursive: true);
+        }
+      });
+      File(p.join(wsTemp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - workspace: .
+''');
+      File(p.join(wsTemp.path, 'pubspec.yaml')).writeAsStringSync('''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - packages/a
+  - packages/b
+''');
+      _writePubspec(
+        p.join(wsTemp.path, 'packages', 'a'),
+        'name: a\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      _writePubspec(
+        p.join(wsTemp.path, 'packages', 'b'),
+        'name: b\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+
+      final config = loadRippleConfig(start: wsTemp);
+      final packages = discoverPackages(config);
+      final ctx = buildPubGetMatchContext(
+        rippleRootPath: config.rootPath,
+        packages: packages,
+      );
+
+      // No root package_config → all members missing.
+      final missing = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: ctx,
+      );
+      expect(
+        names(missing),
+        containsAll(['_', 'a', 'b']),
+      );
+
+      final now = DateTime.now().add(const Duration(seconds: 2));
+      writePackageConfig(wsTemp.path, modified: now);
+
+      final resolved = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPubGet(state: PubGetState.resolved)),
+        pubGetContext: buildPubGetMatchContext(
+          rippleRootPath: config.rootPath,
+          packages: packages,
+        ),
+      );
+      expect(names(resolved), containsAll(['_', 'a', 'b']));
     });
   });
 }

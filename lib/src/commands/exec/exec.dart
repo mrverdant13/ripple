@@ -111,12 +111,15 @@ class ExecCommand extends RippleCommand {
         valueHelp: 'dart|flutter',
         allowed: packageSdkValues,
       )
-      ..addFlag(
-        needsPubGetFlagName,
-        help: 'Only packages whose dart pub get looks stale: missing '
-            '.dart_tool/package_config.json, or that file is older than the '
-            'package pubspec.yaml / pubspec.lock.',
-        negatable: false,
+      ..addOption(
+        pubGetOptionName,
+        help: 'Only packages whose dart pub get status matches: '
+            'start-missing, start-resolved, live-missing, or live-resolved. '
+            'start uses a snapshot at command start; live re-checks before '
+            'each package turn (workspace members share the workspace root '
+            'resolution).',
+        valueHelp: 'value',
+        allowed: pubGetCliValues,
       )
       ..addFlag(
         dependentsFlagName,
@@ -183,8 +186,8 @@ class ExecCommand extends RippleCommand {
   /// Option name for `--sdk`.
   static const sdkOptionName = 'sdk';
 
-  /// Flag name for `--needs-pub-get`.
-  static const needsPubGetFlagName = 'needs-pub-get';
+  /// Option name for `--pub-get`.
+  static const pubGetOptionName = 'pub-get';
 
   /// Flag name for `--dependents`.
   static const dependentsFlagName = 'dependents';
@@ -235,6 +238,13 @@ class ExecCommand extends RippleCommand {
       changed.add(trimmed);
     }
 
+    final pubGetRaw = argResults!.option(pubGetOptionName);
+    FilterPubGet? pubGet;
+    if (pubGetRaw != null) {
+      final parsed = parsePubGetCliValue(pubGetRaw);
+      pubGet = FilterPubGet(state: parsed.state, asOf: parsed.asOf);
+    }
+
     final criteria = PackageFilterCriteria.fromNameGlobs(
       match: argResults!.multiOption(matchOptionName),
       noMatch: argResults!.multiOption(noMatchOptionName),
@@ -247,10 +257,17 @@ class ExecCommand extends RippleCommand {
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
       sdk: argResults!.option(sdkOptionName),
-      needsPubGet: argResults!.flag(needsPubGetFlagName) ? true : null,
+      pubGet: pubGet,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
+
+    final pubGetContext = buildPubGetMatchContext(
+      rippleRootPath: config.rootPath,
+      packages: packages,
+    );
+    final recheckLivePubGet =
+        filterExpressionHasLivePubGet(criteria.expression);
 
     final expandDependents = argResults!.flag(dependentsFlagName);
     final expandDependencies = argResults!.flag(dependenciesFlagName);
@@ -262,6 +279,7 @@ class ExecCommand extends RippleCommand {
           expandDependents ? const GraphExpansionFilters() : null,
       dependenciesFilters:
           expandDependencies ? const GraphExpansionFilters() : null,
+      pubGetContext: pubGetContext,
     ).packages;
 
     final failFast = argResults!.flag(failFastFlagName);
@@ -278,6 +296,18 @@ class ExecCommand extends RippleCommand {
       concurrency: concurrency,
       failFast: failFast,
       run: (package) async {
+        if (recheckLivePubGet) {
+          final stillMatches = filterPackages(
+            [package],
+            config: config,
+            criteria: criteria,
+            pubGetContext: pubGetContext,
+          );
+          if (stillMatches.isEmpty) {
+            return 0;
+          }
+        }
+
         final vars = rippleEnvironment(
           rootPath: config.rootPath,
           package: package,
