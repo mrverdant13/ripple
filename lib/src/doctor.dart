@@ -354,7 +354,6 @@ bool _expressionUsesChanged(
           FilterGroup() ||
           FilterMatch() ||
           FilterNoMatch() ||
-          FilterChanged() ||
           FilterSdk() ||
           FilterPubGet():
       return false;
