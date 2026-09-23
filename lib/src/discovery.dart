@@ -93,7 +93,8 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
         }
 
         final glob = Glob(pattern, context: listContext);
-        for (final entity in glob.listSync(root: rootPath, followLinks: false)) {
+        for (final entity
+            in glob.listSync(root: rootPath, followLinks: false)) {
           if (entity is! Directory) {
             continue;
           }

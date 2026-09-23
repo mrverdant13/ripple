@@ -19,7 +19,10 @@ void main() {
       final config = RippleConfig(
         rootPath: fixtureRoot,
         packages: const RipplePackages(
-          include: [PackageIncludeGlob('packages/**'), PackageIncludeGlob('tool')],
+          include: [
+            PackageIncludeGlob('packages/**'),
+            PackageIncludeGlob('tool')
+          ],
         ),
       );
 
@@ -80,7 +83,8 @@ void main() {
     test('include with no matches yields an empty package list', () {
       final config = RippleConfig(
         rootPath: fixtureRoot,
-        packages: const RipplePackages(include: [PackageIncludeGlob('does-not-exist/*')]),
+        packages: const RipplePackages(
+            include: [PackageIncludeGlob('does-not-exist/*')]),
       );
 
       expect(discoverPackages(config), isEmpty);
@@ -90,7 +94,8 @@ void main() {
         () {
       final config = RippleConfig(
         rootPath: fixtureRoot,
-        packages: const RipplePackages(include: [PackageIncludeGlob('packages/*')]),
+        packages:
+            const RipplePackages(include: [PackageIncludeGlob('packages/*')]),
       );
 
       final packages = discoverPackages(config);
@@ -166,7 +171,8 @@ environment:
       test("include 'packages/**' does not invent a root package", () {
         final config = RippleConfig(
           rootPath: tempRoot.path,
-          packages: const RipplePackages(include: [PackageIncludeGlob('packages/**')]),
+          packages: const RipplePackages(
+              include: [PackageIncludeGlob('packages/**')]),
         );
 
         final packages = discoverPackages(config);
@@ -289,11 +295,13 @@ workspace:
   - packages/ui
 ''');
       writeFile(
-        p.join(temp.path, 'packages', 'app_ws', 'packages', 'core', 'pubspec.yaml'),
+        p.join(temp.path, 'packages', 'app_ws', 'packages', 'core',
+            'pubspec.yaml'),
         'name: core\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
       );
       writeFile(
-        p.join(temp.path, 'packages', 'app_ws', 'packages', 'ui', 'pubspec.yaml'),
+        p.join(
+            temp.path, 'packages', 'app_ws', 'packages', 'ui', 'pubspec.yaml'),
         'name: ui\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
       );
       // Standalone under member — not included by workspace: entry.

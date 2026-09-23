@@ -973,8 +973,7 @@ dependencies:
 
     test('--pub-get live-missing lists packages with stale pub get metadata',
         () async {
-      final temp =
-          Directory.systemTemp.createTempSync('ripple_list_pub_get_');
+      final temp = Directory.systemTemp.createTempSync('ripple_list_pub_get_');
       addTearDown(() {
         if (temp.existsSync()) {
           temp.deleteSync(recursive: true);

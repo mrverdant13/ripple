@@ -54,6 +54,7 @@ PubGetMatchContext buildPubGetMatchContext({
     startMissingByPath: Map<String, bool>.unmodifiable(startMissingByPath),
   );
 }
+
 /// Environment variable for comma-separated package name selection.
 ///
 /// When set, names are intersected with [PackageFilterCriteria.expression]
@@ -644,12 +645,11 @@ bool _matchesPubGet(
   required PubGetMatchContext pubGetContext,
 }) {
   final missing = switch (asOf) {
-    PubGetAsOf.start =>
-      pubGetContext.startMissingByPath[package.path] ??
-          packagePubGetIsMissing(
-            package,
-            workspaces: pubGetContext.workspaces,
-          ),
+    PubGetAsOf.start => pubGetContext.startMissingByPath[package.path] ??
+        packagePubGetIsMissing(
+          package,
+          workspaces: pubGetContext.workspaces,
+        ),
     PubGetAsOf.live => packagePubGetIsMissing(
         package,
         workspaces: pubGetContext.workspaces,
@@ -770,12 +770,14 @@ bool filterExpressionHasLivePubGet(FilterExpr? expression) {
     return false;
   }
   return switch (expression) {
-    FilterAnd(:final children) || FilterOr(:final children) =>
+    FilterAnd(:final children) ||
+    FilterOr(:final children) =>
       children.any(filterExpressionHasLivePubGet),
     FilterPubGet(:final asOf) => asOf == PubGetAsOf.live,
     _ => false,
   };
 }
+
 ///
 /// Returns `true` when the resolution root's `.dart_tool/package_config.json`
 /// is missing or older than that root's `pubspec.yaml` / `pubspec.lock`, or
@@ -789,8 +791,7 @@ bool packagePubGetIsMissing(
   List<DartWorkspace> workspaces = const [],
 }) {
   final root = resolutionRootFor(package.path, workspaces: workspaces);
-  final packageConfig =
-      File(p.join(root, '.dart_tool', 'package_config.json'));
+  final packageConfig = File(p.join(root, '.dart_tool', 'package_config.json'));
   if (!packageConfig.existsSync()) {
     return true;
   }

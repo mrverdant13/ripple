@@ -208,7 +208,8 @@ void _collectMembers({
     final memberDirs = <String>[];
     if (_looksLikeGlob(trimmed)) {
       final glob = Glob(trimmed, context: listContext);
-      for (final entity in glob.listSync(root: packageDir, followLinks: false)) {
+      for (final entity
+          in glob.listSync(root: packageDir, followLinks: false)) {
         if (entity is Directory) {
           memberDirs.add(p.normalize(entity.path));
         }
