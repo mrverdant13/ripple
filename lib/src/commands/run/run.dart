@@ -368,14 +368,19 @@ class RunCommand extends RippleCommand {
       rippleRootPath: config.rootPath,
       packages: discovered,
     );
-    final recheckLivePubGet =
-        filterExpressionHasLivePubGet(criteria.expression) ||
-            filterExpressionHasLivePubGet(
-              script.dependentsFilters?.expression,
-            ) ||
-            filterExpressionHasLivePubGet(
-              script.dependenciesFilters?.expression,
-            );
+    final presets = config.packages.filtersPresets;
+    final recheckLivePubGet = filterExpressionHasLivePubGet(
+          criteria.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          script.dependentsFilters?.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          script.dependenciesFilters?.expression,
+          presets: presets,
+        );
     final selection = selectPackages(
       discovered,
       config: config,

@@ -272,10 +272,19 @@ class ExecCommand extends RippleCommand {
         expandDependents ? const GraphExpansionFilters() : null;
     final dependenciesFilters =
         expandDependencies ? const GraphExpansionFilters() : null;
-    final recheckLivePubGet =
-        filterExpressionHasLivePubGet(criteria.expression) ||
-            filterExpressionHasLivePubGet(dependentsFilters?.expression) ||
-            filterExpressionHasLivePubGet(dependenciesFilters?.expression);
+    final presets = config.packages.filtersPresets;
+    final recheckLivePubGet = filterExpressionHasLivePubGet(
+          criteria.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          dependentsFilters?.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          dependenciesFilters?.expression,
+          presets: presets,
+        );
     final selection = selectPackages(
       packages,
       config: config,

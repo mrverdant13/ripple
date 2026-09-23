@@ -765,16 +765,52 @@ bool _matchesSdk(
 }
 
 /// Whether [expression] contains any [FilterPubGet] with [PubGetAsOf.live].
-bool filterExpressionHasLivePubGet(FilterExpr? expression) {
+///
+/// [FilterPreset] nodes are expanded via [presets] (with cycle detection)
+/// before the traversal continues.
+bool filterExpressionHasLivePubGet(
+  FilterExpr? expression, {
+  Map<String, FilterExpr> presets = const {},
+  List<String> stack = const [],
+}) {
   if (expression == null) {
     return false;
   }
   return switch (expression) {
-    FilterAnd(:final children) || FilterOr(:final children) =>
-      children.any(filterExpressionHasLivePubGet),
+    FilterAnd(:final children) || FilterOr(:final children) => children.any(
+        (child) => filterExpressionHasLivePubGet(
+          child,
+          presets: presets,
+          stack: stack,
+        ),
+      ),
     FilterPubGet(:final asOf) => asOf == PubGetAsOf.live,
+    FilterPreset(:final name) => _presetHasLivePubGet(
+        name,
+        presets: presets,
+        stack: stack,
+      ),
     _ => false,
   };
+}
+
+bool _presetHasLivePubGet(
+  String name, {
+  required Map<String, FilterExpr> presets,
+  required List<String> stack,
+}) {
+  if (stack.contains(name)) {
+    return false;
+  }
+  final body = presets[name];
+  if (body == null) {
+    return false;
+  }
+  return filterExpressionHasLivePubGet(
+    body,
+    presets: presets,
+    stack: [...stack, name],
+  );
 }
 
 /// Whether [package] should still run under live `pubGet` recheck rules.
@@ -794,9 +830,13 @@ bool packageStillMatchesLivePubGet({
   required PubGetMatchContext pubGetContext,
   List<RipplePackage>? packagesForChangedMapping,
 }) {
+  final presets = config.packages.filtersPresets;
   final seedPaths = {for (final seed in selection.seeds) seed.path};
   if (seedPaths.contains(package.path)) {
-    if (!filterExpressionHasLivePubGet(seedCriteria.expression)) {
+    if (!filterExpressionHasLivePubGet(
+      seedCriteria.expression,
+      presets: presets,
+    )) {
       return true;
     }
     return filterPackages(
@@ -813,7 +853,7 @@ bool packageStillMatchesLivePubGet({
   };
   if (dependentPaths.contains(package.path)) {
     final expression = dependentsFilters?.expression;
-    if (!filterExpressionHasLivePubGet(expression)) {
+    if (!filterExpressionHasLivePubGet(expression, presets: presets)) {
       return true;
     }
     return filterPackages(
@@ -830,7 +870,7 @@ bool packageStillMatchesLivePubGet({
   };
   if (dependencyPaths.contains(package.path)) {
     final expression = dependenciesFilters?.expression;
-    if (!filterExpressionHasLivePubGet(expression)) {
+    if (!filterExpressionHasLivePubGet(expression, presets: presets)) {
       return true;
     }
     return filterPackages(

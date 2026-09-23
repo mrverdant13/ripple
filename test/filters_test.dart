@@ -1148,6 +1148,73 @@ workspace:
     });
   });
 
+  group('filterExpressionHasLivePubGet', () {
+    test('detects live pubGet nested in presets', () {
+      final presets = <String, FilterExpr>{
+        'needsPubGetLive': const FilterPubGet(
+          state: PubGetState.missing,
+          asOf: PubGetAsOf.live,
+        ),
+        'nested': const FilterAnd([
+          FilterMatch(['core']),
+          FilterPreset('needsPubGetLive'),
+        ]),
+      };
+
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('needsPubGetLive'),
+          presets: presets,
+        ),
+        isTrue,
+      );
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('nested'),
+          presets: presets,
+        ),
+        isTrue,
+      );
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('withTestDir'),
+          presets: {
+            'withTestDir': const FilterDirExists(['test']),
+          },
+        ),
+        isFalse,
+      );
+    });
+
+    test('start asOf inside a preset is not live', () {
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('snapshot'),
+          presets: {
+            'snapshot': const FilterPubGet(
+              state: PubGetState.missing,
+              asOf: PubGetAsOf.start,
+            ),
+          },
+        ),
+        isFalse,
+      );
+    });
+
+    test('cycles in presets do not throw', () {
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('a'),
+          presets: {
+            'a': const FilterPreset('b'),
+            'b': const FilterPreset('a'),
+          },
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('packageStillMatchesLivePubGet', () {
     late Directory temp;
     late RippleConfig liveConfig;
@@ -1285,6 +1352,88 @@ environment:
           selection: selection,
           pubGetContext: liveContext,
           packagesForChangedMapping: livePackages,
+        ),
+        isFalse,
+      );
+    });
+
+    test('preset-wrapped live pubGet enables seed recheck', () {
+      final presetTemp =
+          Directory.systemTemp.createTempSync('ripple_live_preset_');
+      addTearDown(() {
+        if (presetTemp.existsSync()) {
+          presetTemp.deleteSync(recursive: true);
+        }
+      });
+      File(p.join(presetTemp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+  filtersPresets:
+    needsGet:
+      - pubGet: missing
+        asOf: live
+''');
+      _writePubspec(
+        p.join(presetTemp.path, 'packages', 'core'),
+        '''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      final presetConfig = loadRippleConfig(start: presetTemp);
+      final presetPackages = discoverPackages(presetConfig);
+      final presetContext = buildPubGetMatchContext(
+        rippleRootPath: presetConfig.rootPath,
+        packages: presetPackages,
+      );
+      final seedCriteria = criteria(const FilterPreset('needsGet'));
+      expect(
+        filterExpressionHasLivePubGet(
+          seedCriteria.expression,
+          presets: presetConfig.packages.filtersPresets,
+        ),
+        isTrue,
+      );
+
+      final selection = selectPackages(
+        presetPackages,
+        config: presetConfig,
+        criteria: seedCriteria,
+        pubGetContext: presetContext,
+      );
+      final core = selection.seeds.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: presetConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: presetContext,
+          packagesForChangedMapping: presetPackages,
+        ),
+        isTrue,
+      );
+
+      final file = File(
+        p.join(presetTemp.path, 'packages', 'core', '.dart_tool',
+            'package_config.json'),
+      );
+      file
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      file.setLastModifiedSync(DateTime.now().add(const Duration(seconds: 2)));
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: presetConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: presetContext,
+          packagesForChangedMapping: presetPackages,
         ),
         isFalse,
       );
