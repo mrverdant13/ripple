@@ -174,6 +174,34 @@ workspace:
       );
     });
 
+    test('throws when a workspace member escapes the declaring package', () {
+      final temp = createTempDir('ripple_ws_escape_');
+      final outside = createTempDir('ripple_ws_outside_');
+      writeFile(
+        p.join(outside.path, 'pubspec.yaml'),
+        'name: outsider\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      writeFile(p.join(temp.path, 'pubspec.yaml'), '''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - ${p.relative(outside.path, from: temp.path)}
+''');
+
+      expect(
+        () => loadDartWorkspace(temp.path),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('outside the declaring package'),
+          ),
+        ),
+      );
+    });
+
     test('allows standalone descendant under a member', () {
       final temp = createTempDir('ripple_ws_descendant_');
       writeFile(p.join(temp.path, 'pubspec.yaml'), '''

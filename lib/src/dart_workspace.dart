@@ -219,6 +219,15 @@ void _collectMembers({
     }
 
     for (final memberDir in memberDirs) {
+      // Members must be strict subdirectories of the declaring package.
+      if (!p.isWithin(packageDir, memberDir)) {
+        throw RippleConfigException(
+          'Dart workspace member is outside the declaring package: '
+          '$memberDir (declared under $packageDir, workspace at '
+          '$workspaceRoot)',
+        );
+      }
+
       final pubspecFile = File(p.join(memberDir, 'pubspec.yaml'));
       if (!pubspecFile.existsSync()) {
         throw RippleConfigException(
