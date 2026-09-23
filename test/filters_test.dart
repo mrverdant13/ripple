@@ -1147,6 +1147,197 @@ workspace:
       expect(names(resolved), containsAll(['_', 'a', 'b']));
     });
   });
+
+  group('packageStillMatchesLivePubGet', () {
+    late Directory temp;
+    late RippleConfig liveConfig;
+    late List<RipplePackage> livePackages;
+    late PubGetMatchContext liveContext;
+
+    void writePackageConfig(String packageDir, {required DateTime modified}) {
+      final file = File(
+        p.join(packageDir, '.dart_tool', 'package_config.json'),
+      );
+      file
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      file.setLastModifiedSync(modified);
+    }
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('ripple_live_recheck_');
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+''');
+      _writePubspec(
+        p.join(temp.path, 'packages', 'core'),
+        '''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'app'),
+        '''
+name: app
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+dependencies:
+  core:
+    path: ../core
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'other'),
+        '''
+name: other
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+
+      liveConfig = loadRippleConfig(start: temp);
+      livePackages = discoverPackages(liveConfig);
+      liveContext = buildPubGetMatchContext(
+        rippleRootPath: liveConfig.rootPath,
+        packages: livePackages,
+      );
+    });
+
+    tearDown(() {
+      if (temp.existsSync()) {
+        temp.deleteSync(recursive: true);
+      }
+    });
+
+    test('seed match + live pubGet does not drop expansion dependents', () {
+      final seedCriteria = criteria(
+        const FilterAnd([
+          FilterMatch(['core']),
+          FilterPubGet(state: PubGetState.missing, asOf: PubGetAsOf.live),
+        ]),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        dependentsFilters: const GraphExpansionFilters(),
+        pubGetContext: liveContext,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(names(selection.dependents), ['app']);
+
+      final app = selection.dependents.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: const GraphExpansionFilters(),
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+    });
+
+    test('seed is skipped after live missing resolves', () {
+      final seedCriteria = criteria(
+        const FilterPubGet(state: PubGetState.missing, asOf: PubGetAsOf.live),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        pubGetContext: liveContext,
+      );
+      final core = selection.seeds.singleWhere((p) => p.name == 'core');
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'core'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isFalse,
+      );
+    });
+
+    test('expansion live pubGet rechecks with expansion expression only', () {
+      final seedCriteria = criteria(const FilterMatch(['core']));
+      const dependentsFilters = GraphExpansionFilters(
+        expression: FilterPubGet(
+          state: PubGetState.missing,
+          asOf: PubGetAsOf.live,
+        ),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        dependentsFilters: dependentsFilters,
+        pubGetContext: liveContext,
+      );
+      final app = selection.dependents.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: dependentsFilters,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'app'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: dependentsFilters,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isFalse,
+      );
+    });
+  });
 }
 
 void _writePubspec(String packageDir, String contents) {

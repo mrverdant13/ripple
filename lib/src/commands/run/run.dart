@@ -369,15 +369,22 @@ class RunCommand extends RippleCommand {
       packages: discovered,
     );
     final recheckLivePubGet =
-        filterExpressionHasLivePubGet(criteria.expression);
-    final packages = selectPackages(
+        filterExpressionHasLivePubGet(criteria.expression) ||
+            filterExpressionHasLivePubGet(
+              script.dependentsFilters?.expression,
+            ) ||
+            filterExpressionHasLivePubGet(
+              script.dependenciesFilters?.expression,
+            );
+    final selection = selectPackages(
       discovered,
       config: config,
       criteria: criteria,
       dependentsFilters: script.dependentsFilters,
       dependenciesFilters: script.dependenciesFilters,
       pubGetContext: pubGetContext,
-    ).packages;
+    );
+    final packages = selection.packages;
 
     final failFast = argResults!.flag(failFastFlagName);
     final concurrency = _resolveCliConcurrency(script.concurrency);
@@ -392,16 +399,18 @@ class RunCommand extends RippleCommand {
       concurrency: concurrency,
       failFast: failFast,
       run: (package) async {
-        if (recheckLivePubGet) {
-          final stillMatches = filterPackages(
-            [package],
-            config: config,
-            criteria: criteria,
-            pubGetContext: pubGetContext,
-          );
-          if (stillMatches.isEmpty) {
-            return 0;
-          }
+        if (recheckLivePubGet &&
+            !packageStillMatchesLivePubGet(
+              package: package,
+              config: config,
+              seedCriteria: criteria,
+              selection: selection,
+              dependentsFilters: script.dependentsFilters,
+              dependenciesFilters: script.dependenciesFilters,
+              pubGetContext: pubGetContext,
+              packagesForChangedMapping: discovered,
+            )) {
+          return 0;
         }
 
         final vars = rippleEnvironment(

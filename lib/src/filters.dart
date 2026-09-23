@@ -770,14 +770,82 @@ bool filterExpressionHasLivePubGet(FilterExpr? expression) {
     return false;
   }
   return switch (expression) {
-    FilterAnd(:final children) ||
-    FilterOr(:final children) =>
+    FilterAnd(:final children) || FilterOr(:final children) =>
       children.any(filterExpressionHasLivePubGet),
     FilterPubGet(:final asOf) => asOf == PubGetAsOf.live,
     _ => false,
   };
 }
 
+/// Whether [package] should still run under live `pubGet` recheck rules.
+///
+/// Seeds are re-filtered with [seedCriteria]. Expansion-only packages are
+/// re-filtered only with the expansion expression that selected them — never
+/// with seed criteria (so `--match` / `RIPPLE_PACKAGES` do not drop
+/// dependents/dependencies). Expansion packages whose selecting filters have
+/// no live `pubGet` are never skipped.
+bool packageStillMatchesLivePubGet({
+  required RipplePackage package,
+  required RippleConfig config,
+  required PackageFilterCriteria seedCriteria,
+  required PackageSelection selection,
+  GraphExpansionFilters? dependentsFilters,
+  GraphExpansionFilters? dependenciesFilters,
+  required PubGetMatchContext pubGetContext,
+  List<RipplePackage>? packagesForChangedMapping,
+}) {
+  final seedPaths = {for (final seed in selection.seeds) seed.path};
+  if (seedPaths.contains(package.path)) {
+    if (!filterExpressionHasLivePubGet(seedCriteria.expression)) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: seedCriteria,
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  final dependentPaths = {
+    for (final dependent in selection.dependents) dependent.path,
+  };
+  if (dependentPaths.contains(package.path)) {
+    final expression = dependentsFilters?.expression;
+    if (!filterExpressionHasLivePubGet(expression)) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: PackageFilterCriteria(expression: expression),
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  final dependencyPaths = {
+    for (final dependency in selection.dependencies) dependency.path,
+  };
+  if (dependencyPaths.contains(package.path)) {
+    final expression = dependenciesFilters?.expression;
+    if (!filterExpressionHasLivePubGet(expression)) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: PackageFilterCriteria(expression: expression),
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  return true;
+}
+
+/// Whether [package] looks like it needs `dart pub get`.
 ///
 /// Returns `true` when the resolution root's `.dart_tool/package_config.json`
 /// is missing or older than that root's `pubspec.yaml` / `pubspec.lock`, or
