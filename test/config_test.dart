@@ -40,8 +40,8 @@ scripts:
       expect(config.rootPath, '/tmp/demo');
       expect(config.name, 'demo');
       expect(config.packages.include, [
-        PackageIncludeGlob('packages/*'),
-        PackageIncludeGlob('tool'),
+        const PackageIncludeGlob('packages/*'),
+        const PackageIncludeGlob('tool'),
       ]);
       expect(config.packages.exclude, ['**/example/**']);
       expect(config.packages.groups, {
@@ -1446,9 +1446,9 @@ packages:
         rootPath: '/r',
       );
       expect(config.packages.include, [
-        PackageIncludeGlob('packages/standalone_*'),
-        PackageIncludeWorkspace('packages/app_ws'),
-        PackageIncludeGlob('packages/other/*'),
+        const PackageIncludeGlob('packages/standalone_*'),
+        const PackageIncludeWorkspace('packages/app_ws'),
+        const PackageIncludeGlob('packages/other/*'),
       ]);
     });
 
@@ -2123,7 +2123,7 @@ scripts:
       final config = loadRippleConfig(start: nested);
       expect(config.rootPath, root.path);
       expect(config.name, 'nested-demo');
-      expect(config.packages.include, [PackageIncludeGlob('packages/*')]);
+      expect(config.packages.include, [const PackageIncludeGlob('packages/*')]);
       expect(config.scripts['format.ci']!.kind, ScriptKind.run);
     });
 
