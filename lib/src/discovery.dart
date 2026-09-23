@@ -102,8 +102,20 @@ List<RipplePackage> discoverPackages(RippleConfig config) {
         }
       case PackageIncludeWorkspace(:final path):
         final workspaceRoot = p.normalize(p.join(rootPath, path));
+        if (!_isUnderRippleRoot(rootPath, workspaceRoot)) {
+          throw RippleConfigException(
+            'packages.include workspace path escapes the Ripple root: $path '
+            '(resolved to $workspaceRoot, Ripple root $rootPath)',
+          );
+        }
         final workspace = loadDartWorkspace(workspaceRoot);
         for (final memberPath in workspace.memberPaths) {
+          if (!_isUnderRippleRoot(rootPath, memberPath)) {
+            throw RippleConfigException(
+              'Dart workspace member escapes the Ripple root: $memberPath '
+              '(Ripple root $rootPath)',
+            );
+          }
           _tryAddPackage(candidates, rootPath, memberPath);
         }
     }
@@ -188,6 +200,13 @@ void _tryAddPackage(
 String _posixRelative(String rootPath, String absolutePath) {
   final relative = p.relative(absolutePath, from: rootPath);
   return p.posix.joinAll(p.split(relative));
+}
+
+/// Whether [absolutePath] is [rootPath] or a descendant of it.
+bool _isUnderRippleRoot(String rootPath, String absolutePath) {
+  final root = p.normalize(rootPath);
+  final path = p.normalize(absolutePath);
+  return path == root || p.isWithin(root, path);
 }
 
 bool _isExcluded(String relativePath, List<Glob> excludeGlobs) {

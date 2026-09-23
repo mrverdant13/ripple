@@ -372,5 +372,41 @@ workspace:
         ),
       );
     });
+
+    test('rejects workspace include paths outside the Ripple root', () {
+      final temp = createTempDir('ripple_disc_escape_');
+      final outside = createTempDir('ripple_disc_outside_');
+      writeFile(
+        p.join(outside.path, 'pubspec.yaml'),
+        '''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - pkg
+''',
+      );
+      writeFile(
+        p.join(outside.path, 'pkg', 'pubspec.yaml'),
+        'name: pkg\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - workspace: ${p.relative(outside.path, from: temp.path)}
+''');
+
+      expect(
+        () => discoverPackages(loadRippleConfig(start: temp)),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('escapes the Ripple root'),
+          ),
+        ),
+      );
+    });
   });
 }
