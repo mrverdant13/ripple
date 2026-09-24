@@ -237,6 +237,71 @@ const packageSdkFlutter = 'flutter';
 /// Valid values for [FilterSdk] / `--sdk`.
 const packageSdkValues = [packageSdkDart, packageSdkFlutter];
 
+/// `pubGet` filter state: resolution metadata looks missing/stale or resolved.
+enum PubGetState {
+  /// Needs `dart pub get` (missing or stale package config).
+  missing,
+
+  /// Resolution metadata looks up to date.
+  resolved,
+}
+
+/// When to evaluate a `pubGet` filter.
+enum PubGetAsOf {
+  /// Use the snapshot taken at the start of the Ripple command.
+  start,
+
+  /// Re-check the filesystem (default; also re-checked before each exec turn).
+  live,
+}
+
+/// CLI `--pub-get` value: start snapshot + missing.
+const pubGetCliStartMissing = 'start-missing';
+
+/// CLI `--pub-get` value: start snapshot + resolved.
+const pubGetCliStartResolved = 'start-resolved';
+
+/// CLI `--pub-get` value: live check + missing.
+const pubGetCliLiveMissing = 'live-missing';
+
+/// CLI `--pub-get` value: live check + resolved.
+const pubGetCliLiveResolved = 'live-resolved';
+
+/// Allowed `--pub-get` option values.
+const pubGetCliValues = [
+  pubGetCliStartMissing,
+  pubGetCliStartResolved,
+  pubGetCliLiveMissing,
+  pubGetCliLiveResolved,
+];
+
+/// Parses a CLI `--pub-get` token into state + timing.
+({PubGetState state, PubGetAsOf asOf}) parsePubGetCliValue(String value) {
+  return switch (value) {
+    pubGetCliStartMissing => (
+        state: PubGetState.missing,
+        asOf: PubGetAsOf.start,
+      ),
+    pubGetCliStartResolved => (
+        state: PubGetState.resolved,
+        asOf: PubGetAsOf.start,
+      ),
+    pubGetCliLiveMissing => (
+        state: PubGetState.missing,
+        asOf: PubGetAsOf.live,
+      ),
+    pubGetCliLiveResolved => (
+        state: PubGetState.resolved,
+        asOf: PubGetAsOf.live,
+      ),
+    _ => throw ArgumentError.value(
+        value,
+        'pub-get',
+        'must be one of ${pubGetCliValues.join(', ')}',
+      ),
+  };
+}
+
 /// Package SDK kind from pubspec `environment` (`dart` or `flutter`).
 ///
 /// Flutter means `environment.flutter` is set. A `flutter` SDK dependency
@@ -256,26 +321,29 @@ final class FilterSdk extends FilterExpr {
   int get hashCode => sdk.hashCode;
 }
 
-/// Whether the package's `dart pub get` output looks stale.
+/// Whether the package's `dart pub get` output looks missing/stale or resolved.
 ///
-/// When [needsPubGet] is `true`, the package matches if
-/// `.dart_tool/package_config.json` is missing or older than that package's
-/// `pubspec.yaml` / `pubspec.lock`. When `false`, it matches the complement.
-/// Comparison is per-package files only (no root workspace lock).
-final class FilterNeedsPubGet extends FilterExpr {
-  /// Creates a `needsPubGet` leaf.
-  const FilterNeedsPubGet(this.needsPubGet);
+/// Default [asOf] is [PubGetAsOf.live]. Workspace members use the workspace
+/// root's shared `package_config` / lock (see [packagePubGetIsMissing]).
+final class FilterPubGet extends FilterExpr {
+  /// Creates a `pubGet` leaf.
+  const FilterPubGet({
+    required this.state,
+    this.asOf = PubGetAsOf.live,
+  });
 
-  /// When `true`, match packages that need `pub get`; when `false`, match
-  /// packages that do not.
-  final bool needsPubGet;
+  /// Missing/stale vs resolved.
+  final PubGetState state;
+
+  /// Snapshot at command start vs live filesystem check.
+  final PubGetAsOf asOf;
 
   @override
   bool operator ==(Object other) =>
-      other is FilterNeedsPubGet && other.needsPubGet == needsPubGet;
+      other is FilterPubGet && other.state == state && other.asOf == asOf;
 
   @override
-  int get hashCode => needsPubGet.hashCode;
+  int get hashCode => Object.hash(state, asOf);
 }
 
 /// Reference to a named expression under `packages.filtersPresets`.
@@ -428,6 +496,44 @@ class RippleScript {
   final GraphExpansionFilters? dependenciesFilters;
 }
 
+/// One `packages.include` entry: a path glob or a Dart workspace expansion.
+sealed class PackageIncludeEntry {
+  /// Creates an include entry.
+  const PackageIncludeEntry();
+}
+
+/// Include directories matching a glob relative to the Ripple root.
+final class PackageIncludeGlob extends PackageIncludeEntry {
+  /// Creates a glob include entry.
+  const PackageIncludeGlob(this.pattern);
+
+  /// Glob pattern (posix `/` separators) relative to the Ripple root.
+  final String pattern;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PackageIncludeGlob && other.pattern == pattern;
+
+  @override
+  int get hashCode => pattern.hashCode;
+}
+
+/// Include a Dart workspace root and all of its transitive members.
+final class PackageIncludeWorkspace extends PackageIncludeEntry {
+  /// Creates a workspace include entry for [path] (Ripple-root relative).
+  const PackageIncludeWorkspace(this.path);
+
+  /// Repo-relative path to the Dart workspace root directory.
+  final String path;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PackageIncludeWorkspace && other.path == path;
+
+  @override
+  int get hashCode => path.hashCode;
+}
+
 /// Package discovery settings under `packages:`.
 class RipplePackages {
   /// Creates package include/exclude/group/preset settings.
@@ -439,8 +545,9 @@ class RipplePackages {
     this.changedIgnore = const [],
   });
 
-  /// Glob patterns (relative to the Ripple root) for candidate package dirs.
-  final List<String> include;
+  /// Include entries (globs and/or `workspace:` expansions) relative to the
+  /// Ripple root.
+  final List<PackageIncludeEntry> include;
 
   /// Glob patterns to subtract from include matches.
   final List<String> exclude;
@@ -1063,12 +1170,66 @@ RipplePackages _packagesFromValue(
   }
   final Map<dynamic, dynamic> map = value;
   return RipplePackages(
-    include: _stringList(map, 'include', 'RipplePackages'),
+    include: _includeEntriesFromValue(map['include'], map),
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
     groups: _groupsFromValue(map['groups'], map),
     filtersPresets: _filtersPresetsFromValue(map['filtersPresets'], map),
     changedIgnore: _stringList(map, 'changedIgnore', 'RipplePackages'),
   );
+}
+
+List<PackageIncludeEntry> _includeEntriesFromValue(
+  Object? value,
+  Map<dynamic, dynamic> parent,
+) {
+  if (value == null) {
+    return const [];
+  }
+  if (value is! List) {
+    throw CheckedFromJsonException(
+      parent,
+      'include',
+      'RipplePackages',
+      'Expected a list of glob strings and/or `{ workspace: <path> }` maps',
+    );
+  }
+  final entries = <PackageIncludeEntry>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is String) {
+      entries.add(PackageIncludeGlob(element));
+      continue;
+    }
+    if (element is Map) {
+      final Map<dynamic, dynamic> map = element;
+      if (map.length != 1 || !map.containsKey('workspace')) {
+        throw CheckedFromJsonException(
+          parent,
+          'include',
+          'RipplePackages',
+          'include[$i] map must be a single-key `{ workspace: <path> }`',
+        );
+      }
+      final path = map['workspace'];
+      if (path is! String || path.trim().isEmpty) {
+        throw CheckedFromJsonException(
+          parent,
+          'include',
+          'RipplePackages',
+          'include[$i].workspace must be a non-empty string path',
+        );
+      }
+      entries.add(PackageIncludeWorkspace(path.trim()));
+      continue;
+    }
+    throw CheckedFromJsonException(
+      parent,
+      'include',
+      'RipplePackages',
+      'include[$i] must be a glob string or `{ workspace: <path> }`',
+    );
+  }
+  return List<PackageIncludeEntry>.unmodifiable(entries);
 }
 
 Map<String, FilterExpr> _filtersPresetsFromValue(
@@ -1665,6 +1826,12 @@ FilterExpr _filterNodeFromValue(
     );
   }
   final Map<dynamic, dynamic> map = value;
+
+  // `pubGet` may be paired with optional `asOf` (two-key map).
+  if (map.containsKey('pubGet')) {
+    return _pubGetFilterFromMap(map, parent, path);
+  }
+
   if (map.length != 1) {
     throw CheckedFromJsonException(
       parent,
@@ -1673,7 +1840,7 @@ FilterExpr _filterNodeFromValue(
       'Invalid filter at $path: expected exactly one key '
           '(and, or, preset, changed, match, noMatch, group, dependsOn, '
           'dirExists, fileExists, noDirExists, noFileExists, sdk, '
-          'needsPubGet), '
+          'pubGet), '
           'found ${map.length}',
     );
   }
@@ -1829,17 +1996,6 @@ FilterExpr _filterNodeFromValue(
         );
       }
       return FilterSdk(sdk);
-    case 'needsPubGet':
-      final needsValue = entry.value;
-      if (needsValue is! bool) {
-        throw CheckedFromJsonException(
-          parent,
-          'filters',
-          'FilterExpr',
-          'Invalid filter at $path: `needsPubGet` must be a boolean',
-        );
-      }
-      return FilterNeedsPubGet(needsValue);
     default:
       throw CheckedFromJsonException(
         parent,
@@ -1848,9 +2004,72 @@ FilterExpr _filterNodeFromValue(
         'Invalid filter at $path: unknown key "$key". Expected one of: '
             'and, or, preset, changed, match, noMatch, group, dependsOn, '
             'dirExists, fileExists, noDirExists, noFileExists, sdk, '
-            'needsPubGet',
+            'pubGet',
       );
   }
+}
+
+FilterPubGet _pubGetFilterFromMap(
+  Map<dynamic, dynamic> map,
+  Map<dynamic, dynamic> parent,
+  String path,
+) {
+  for (final key in map.keys) {
+    if (key is! String || (key != 'pubGet' && key != 'asOf')) {
+      throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: `pubGet` maps may only include `pubGet` '
+            'and optional `asOf` keys',
+      );
+    }
+  }
+
+  final stateRaw = map['pubGet'];
+  if (stateRaw is! String) {
+    throw CheckedFromJsonException(
+      parent,
+      'filters',
+      'FilterExpr',
+      'Invalid filter at $path: `pubGet` must be `missing` or `resolved`',
+    );
+  }
+  final state = switch (stateRaw) {
+    'missing' => PubGetState.missing,
+    'resolved' => PubGetState.resolved,
+    _ => throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: `pubGet` must be `missing` or `resolved`',
+      ),
+  };
+
+  var asOf = PubGetAsOf.live;
+  if (map.containsKey('asOf')) {
+    final asOfRaw = map['asOf'];
+    if (asOfRaw is! String) {
+      throw CheckedFromJsonException(
+        parent,
+        'filters',
+        'FilterExpr',
+        'Invalid filter at $path: `asOf` must be `start` or `live`',
+      );
+    }
+    asOf = switch (asOfRaw) {
+      'start' => PubGetAsOf.start,
+      'live' => PubGetAsOf.live,
+      _ => throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: `asOf` must be `start` or `live`',
+        ),
+    };
+  }
+
+  return FilterPubGet(state: state, asOf: asOf);
 }
 
 List<FilterExpr> _filterChildrenFromValue(

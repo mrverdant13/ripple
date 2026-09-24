@@ -3,10 +3,13 @@
 Repo-agnostic CLI for discovering Dart packages and running commands or named
 scripts across a consumer repository via `ripple.yaml`.
 
-Ripple does **not** manage Dart workspaces, generate `pubspec_overrides`, or
-link packages. Each package stays independent; Ripple only discovers directories
-that contain a `pubspec.yaml` and runs processes in them (or once at the repo
-root for `run:` scripts).
+Ripple does **not** create or manage Dart workspaces, generate
+`pubspec_overrides`, or link packages. It can **detect and respect** existing
+[Dart pub workspaces](https://dart.dev/tools/pub/workspaces): expand
+`workspace:` include entries, validate intermediate standalones, and treat
+shared resolution roots when filtering on `pubGet`. Otherwise each package is
+discovered by `pubspec.yaml` presence and commands run in that package (or once
+at the repo root for `run:` scripts).
 
 ## Install
 
@@ -136,7 +139,8 @@ optional (see [Shell quoting](#shell-quoting)).
 ```yaml
 packages:
   include:
-    - packages/*
+    - packages/standalone_*
+    - workspace: packages/app_ws
     - tool
   exclude:
     - '**/example/**'
@@ -152,6 +156,17 @@ packages:
       - dependsOn: [test]
       - dirExists: [e2e]
 ```
+
+`packages.include` entries are either:
+
+- a **glob string** (unchanged) — directories under the Ripple root with a
+  `pubspec.yaml`, or
+- a **`workspace: <path>`** map — expand that Dart workspace root and all
+  transitive members from its `workspace:` field (including nested workspaces).
+  Standalone packages under a member are **not** included; add a separate glob.
+
+Invalid Dart workspace layouts (a non-member `pubspec.yaml` on the path from a
+workspace root to a member) hard-fail every command that discovers packages.
 
 - **`include`** — glob patterns relative to the Ripple root for candidate
   package directories (a directory is a package iff it contains `pubspec.yaml`).
@@ -439,24 +454,28 @@ scripts:
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
 | `changed` | descriptor string **or** list of strings | Package had path changes per git (see below); list = union |
 | `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
-| `needsPubGet` | boolean | `true` = `.dart_tool/package_config.json` missing or older than that package's `pubspec.yaml` / `pubspec.lock`; `false` = complement |
+| `pubGet` | `missing` or `resolved` | Resolution metadata missing/stale vs up to date |
+| `asOf` | `start` or `live` (optional; default `live`) | Only valid with `pubGet`: snapshot at command start vs live filesystem check |
 
 `sdk: flutter` means the package declares `environment.flutter` in
 `pubspec.yaml`. A `flutter:` SDK dependency alone does **not** count (use
 `dependsOn: [flutter]` for that). `sdk: dart` is the complement. Pass at most
 one `--sdk` value (two values would be an empty set).
 
-`needsPubGet` compares **per-package** files only (no root workspace lock).
-Use it to run `dart pub get` only where resolution metadata looks stale, for
-example:
+`pubGet` may appear alone or with `asOf` in the same map:
 
 ```yaml
-scripts:
-  bootstrap:
-    exec: dart pub get
-    filters:
-      - needsPubGet: true
+filters:
+  - pubGet: missing
+  - pubGet: resolved
+    asOf: start
 ```
+
+Standalone packages use that package's `.dart_tool/package_config.json` vs its
+`pubspec.yaml` / `pubspec.lock`. Dart workspace members share the **workspace
+root** resolution. Prefer a root `run: dart pub get` to bootstrap a workspace,
+or `exec` with `pubGet: missing` and `asOf: live` so concurrent/ordered runs
+skip siblings once the shared root is resolved.
 
 There is no built-in `analyze` command. Prefer a script such as
 `{{dart}} analyze --no-pub` when packages are already resolved.
@@ -591,7 +610,7 @@ ripple list --depends-on path
 ripple list --preset e2eTestable
 ripple list --sdk dart
 ripple list --sdk flutter --group apps
-ripple list --needs-pub-get
+ripple list --pub-get live-missing
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
 ripple list --changed since:origin/main --changed workdir:HEAD
@@ -613,7 +632,7 @@ ripple list --changed since:origin/main --dependents
 | `--depends-on <pkg>` | Only packages that declare this direct dependency (repeatable, AND). |
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
-| `--needs-pub-get` | Only packages whose `dart pub get` looks stale (missing or outdated `.dart_tool/package_config.json` vs that package's `pubspec.yaml` / `pubspec.lock`). |
+| `--pub-get <value>` | Only packages whose pub get status matches: `start-missing`, `start-resolved`, `live-missing`, or `live-resolved`. |
 | `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Repeatable; values are a union. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
@@ -727,7 +746,7 @@ Behavior depends on the script kind:
   are not injected (and are stripped if present in the parent environment).
   Package filters (`--group`, `--match`, `--no-match`, `--dir-exists`,
   `--file-exists`, `--no-dir-exists`, `--no-file-exists`, `--depends-on`,
-  `--preset`, `--changed`, `--sdk`, `--needs-pub-get`, and
+  `--preset`, `--changed`, `--sdk`, `--pub-get`, and
   `RIPPLE_PACKAGES`) are rejected. `--concurrency` and `--order` are also
   rejected (a `run:` script has a single root cwd). Begin/end stderr root-scope
   banners use `(root)`; each step also gets command start/end banners stamped
@@ -808,7 +827,7 @@ except `--fatal-constraint-mismatch` also exits **1** when any
 | `replacement.missing` | warning | The first token of a `replacements.dart` or `replacements.flutter` value is not found on `PATH` |
 | `resolution.mix` | warning | Some selected packages set `resolution: workspace` and others do not |
 | `constraint.mismatch` | warning | A selected package's hosted-style dependency on another selected package does not allow that package's current `version:` |
-| `pub.get.stale` | warning | A selected package's `.dart_tool/package_config.json` is missing or older than that package's `pubspec.yaml` / `pubspec.lock` |
+| `pub.get.stale` | warning | A selected package's resolution root `.dart_tool/package_config.json` is missing or older than that root's `pubspec.yaml` / `pubspec.lock` (and member pubspecs for Dart workspaces) |
 
 `--format json` prints a JSON object with `packageCount` and a `findings` array
 (`id`, `severity`, `message`, optional `path`). Constraint mismatches also
@@ -858,12 +877,12 @@ parent-environment inheritance. For `exec:` scripts it narrows **seeds only**
 
 Ripple intentionally does **not**:
 
-- Create or manage Dart **workspaces**
+- **Create or manage** Dart workspaces (it may detect/respect existing ones)
 - Generate **`pubspec_overrides.yaml`** or otherwise link packages
 - Provide cross-script composition or sip-style `${{ }}` **script** references
   (use a YAML list for in-script steps, or shell `&&` between `ripple run`
   invocations). `{{key}}` placeholders are only for the `replacements` map.
 - Discover packages by anything other than `pubspec.yaml` presence under
-  include/exclude globs
+  include entries (globs and optional `workspace:` expansions) after exclude
 - Publish to pub.dev as the v1 distribution channel (use git tags with
   `dart install` as above)

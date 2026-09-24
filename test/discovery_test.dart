@@ -19,7 +19,10 @@ void main() {
       final config = RippleConfig(
         rootPath: fixtureRoot,
         packages: const RipplePackages(
-          include: ['packages/**', 'tool'],
+          include: [
+            PackageIncludeGlob('packages/**'),
+            PackageIncludeGlob('tool')
+          ],
         ),
       );
 
@@ -80,7 +83,8 @@ void main() {
     test('include with no matches yields an empty package list', () {
       final config = RippleConfig(
         rootPath: fixtureRoot,
-        packages: const RipplePackages(include: ['does-not-exist/*']),
+        packages: const RipplePackages(
+            include: [PackageIncludeGlob('does-not-exist/*')]),
       );
 
       expect(discoverPackages(config), isEmpty);
@@ -90,7 +94,8 @@ void main() {
         () {
       final config = RippleConfig(
         rootPath: fixtureRoot,
-        packages: const RipplePackages(include: ['packages/*']),
+        packages:
+            const RipplePackages(include: [PackageIncludeGlob('packages/*')]),
       );
 
       final packages = discoverPackages(config);
@@ -134,7 +139,7 @@ environment:
       test("include '**' selects the Ripple root package", () {
         final config = RippleConfig(
           rootPath: tempRoot.path,
-          packages: const RipplePackages(include: ['**']),
+          packages: const RipplePackages(include: [PackageIncludeGlob('**')]),
         );
 
         final packages = discoverPackages(config);
@@ -152,7 +157,7 @@ environment:
       test("include '.' selects only the Ripple root package", () {
         final config = RippleConfig(
           rootPath: tempRoot.path,
-          packages: const RipplePackages(include: ['.']),
+          packages: const RipplePackages(include: [PackageIncludeGlob('.')]),
         );
 
         final packages = discoverPackages(config);
@@ -166,7 +171,8 @@ environment:
       test("include 'packages/**' does not invent a root package", () {
         final config = RippleConfig(
           rootPath: tempRoot.path,
-          packages: const RipplePackages(include: ['packages/**']),
+          packages: const RipplePackages(
+              include: [PackageIncludeGlob('packages/**')]),
         );
 
         final packages = discoverPackages(config);
@@ -184,7 +190,7 @@ environment:
         final config = RippleConfig(
           rootPath: tempRoot.path,
           packages: const RipplePackages(
-            include: ['**'],
+            include: [PackageIncludeGlob('**')],
             exclude: ['.'],
           ),
         );
@@ -241,12 +247,166 @@ environment:
       final config = RippleConfig(
         rootPath: fixtureRoot,
         packages: const RipplePackages(
-          include: ['tool'],
+          include: [PackageIncludeGlob('tool')],
         ),
       );
       final packages = discoverPackages(config);
 
       expect(resolvePackageGroups(config, packages: packages), isEmpty);
+    });
+  });
+
+  group('discoverPackages — Dart workspaces', () {
+    Directory createTempDir(String prefix) {
+      final temp = Directory.systemTemp.createTempSync(prefix);
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+      return temp;
+    }
+
+    void writeFile(String path, String contents) {
+      File(path)
+        ..createSync(recursive: true)
+        ..writeAsStringSync(contents);
+    }
+
+    test('workspace include expands root and members', () {
+      final temp = createTempDir('ripple_disc_ws_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/alone
+    - workspace: packages/app_ws
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'alone', 'pubspec.yaml'),
+        'name: alone\nenvironment:\n  sdk: ^3.5.0\n',
+      );
+      writeFile(p.join(temp.path, 'packages', 'app_ws', 'pubspec.yaml'), '''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - packages/core
+  - packages/ui
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'app_ws', 'packages', 'core',
+            'pubspec.yaml'),
+        'name: core\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      writeFile(
+        p.join(
+            temp.path, 'packages', 'app_ws', 'packages', 'ui', 'pubspec.yaml'),
+        'name: ui\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      // Standalone under member — not included by workspace: entry.
+      writeFile(
+        p.join(
+          temp.path,
+          'packages',
+          'app_ws',
+          'packages',
+          'ui',
+          'example',
+          'pubspec.yaml',
+        ),
+        'name: ui_example\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+
+      final packages = discoverPackages(loadRippleConfig(start: temp));
+      expect(
+        packages.map((p) => p.relativePath).toList(),
+        [
+          'packages/alone',
+          'packages/app_ws',
+          'packages/app_ws/packages/core',
+          'packages/app_ws/packages/ui',
+        ],
+      );
+    });
+
+    test('hard-fails on intermediate standalone under a workspace', () {
+      final temp = createTempDir('ripple_disc_bad_');
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - packages/*
+''');
+      writeFile(p.join(temp.path, 'packages', 'app_ws', 'pubspec.yaml'), '''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - nested/child
+''');
+      writeFile(
+        p.join(temp.path, 'packages', 'app_ws', 'nested', 'pubspec.yaml'),
+        'name: nested\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      writeFile(
+        p.join(
+          temp.path,
+          'packages',
+          'app_ws',
+          'nested',
+          'child',
+          'pubspec.yaml',
+        ),
+        'name: child\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+
+      expect(
+        () => discoverPackages(loadRippleConfig(start: temp)),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('intermediate standalone'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects workspace include paths outside the Ripple root', () {
+      final temp = createTempDir('ripple_disc_escape_');
+      final outside = createTempDir('ripple_disc_outside_');
+      writeFile(
+        p.join(outside.path, 'pubspec.yaml'),
+        '''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - pkg
+''',
+      );
+      writeFile(
+        p.join(outside.path, 'pkg', 'pubspec.yaml'),
+        'name: pkg\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      writeFile(p.join(temp.path, 'ripple.yaml'), '''
+packages:
+  include:
+    - workspace: ${p.relative(outside.path, from: temp.path)}
+''');
+
+      expect(
+        () => discoverPackages(loadRippleConfig(start: temp)),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('escapes the Ripple root'),
+          ),
+        ),
+      );
     });
   });
 }

@@ -903,10 +903,11 @@ dependencies:
     });
   });
 
-  group('filterPackages — needsPubGet', () {
+  group('filterPackages — pubGet', () {
     late Directory temp;
     late RippleConfig pubGetConfig;
     late List<RipplePackage> pubGetPackages;
+    late PubGetMatchContext pubGetContext;
 
     void writePackageConfig(String packageDir, {required DateTime modified}) {
       final file = File(
@@ -919,7 +920,7 @@ dependencies:
     }
 
     setUp(() {
-      temp = Directory.systemTemp.createTempSync('ripple_needs_pub_get_');
+      temp = Directory.systemTemp.createTempSync('ripple_pub_get_');
       File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
 packages:
   include:
@@ -982,6 +983,10 @@ environment:
 
       pubGetConfig = loadRippleConfig(start: temp);
       pubGetPackages = discoverPackages(pubGetConfig);
+      pubGetContext = buildPubGetMatchContext(
+        rippleRootPath: pubGetConfig.rootPath,
+        packages: pubGetPackages,
+      );
     });
 
     tearDown(() {
@@ -990,11 +995,12 @@ environment:
       }
     });
 
-    test('needsPubGet true matches missing or older package_config', () {
+    test('pubGet missing matches missing or older package_config', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: criteria(const FilterNeedsPubGet(true)),
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: pubGetContext,
       );
 
       expect(
@@ -1003,31 +1009,481 @@ environment:
       );
     });
 
-    test('needsPubGet false matches fresh packages only', () {
+    test('pubGet resolved matches fresh packages only', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: criteria(const FilterNeedsPubGet(false)),
+        criteria: criteria(const FilterPubGet(state: PubGetState.resolved)),
+        pubGetContext: pubGetContext,
       );
 
       expect(names(filtered), ['fresh']);
     });
 
-    test('packageNeedsPubGet is false after fresh package_config', () {
+    test('packagePubGetIsMissing is false after fresh package_config', () {
       final fresh = pubGetPackages.singleWhere((p) => p.name == 'fresh');
-      expect(packageNeedsPubGet(fresh), isFalse);
+      expect(packagePubGetIsMissing(fresh), isFalse);
     });
 
-    test('fromNameGlobs needsPubGet true builds the leaf', () {
+    test('fromNameGlobs pubGet missing builds the leaf', () {
       final filtered = filterPackages(
         pubGetPackages,
         config: pubGetConfig,
-        criteria: PackageFilterCriteria.fromNameGlobs(needsPubGet: true),
+        criteria: PackageFilterCriteria.fromNameGlobs(
+          pubGet: const FilterPubGet(state: PubGetState.missing),
+        ),
+        pubGetContext: pubGetContext,
       );
 
       expect(
         names(filtered),
         ['missing_config', 'stale_lock', 'stale_pubspec'],
+      );
+    });
+
+    test('asOf start keeps snapshot after filesystem changes', () {
+      final filteredStart = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(
+          const FilterPubGet(
+            state: PubGetState.missing,
+            asOf: PubGetAsOf.start,
+          ),
+        ),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(filteredStart), contains('missing_config'));
+
+      // Make missing_config look fresh after the snapshot.
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'missing_config'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      final stillStart = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(
+          const FilterPubGet(
+            state: PubGetState.missing,
+            asOf: PubGetAsOf.start,
+          ),
+        ),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(stillStart), contains('missing_config'));
+
+      final live = filterPackages(
+        pubGetPackages,
+        config: pubGetConfig,
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: pubGetContext,
+      );
+      expect(names(live), isNot(contains('missing_config')));
+    });
+
+    test('workspace members share resolution root freshness', () {
+      final wsTemp = Directory.systemTemp.createTempSync('ripple_pub_ws_');
+      addTearDown(() {
+        if (wsTemp.existsSync()) {
+          wsTemp.deleteSync(recursive: true);
+        }
+      });
+      File(p.join(wsTemp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - workspace: .
+''');
+      File(p.join(wsTemp.path, 'pubspec.yaml')).writeAsStringSync('''
+name: _
+publish_to: none
+environment:
+  sdk: ^3.6.0
+workspace:
+  - packages/a
+  - packages/b
+''');
+      _writePubspec(
+        p.join(wsTemp.path, 'packages', 'a'),
+        'name: a\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+      _writePubspec(
+        p.join(wsTemp.path, 'packages', 'b'),
+        'name: b\nresolution: workspace\nenvironment:\n  sdk: ^3.6.0\n',
+      );
+
+      final config = loadRippleConfig(start: wsTemp);
+      final packages = discoverPackages(config);
+      final ctx = buildPubGetMatchContext(
+        rippleRootPath: config.rootPath,
+        packages: packages,
+      );
+
+      // No root package_config → all members missing.
+      final missing = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPubGet(state: PubGetState.missing)),
+        pubGetContext: ctx,
+      );
+      expect(
+        names(missing),
+        containsAll(['_', 'a', 'b']),
+      );
+
+      final now = DateTime.now().add(const Duration(seconds: 2));
+      writePackageConfig(wsTemp.path, modified: now);
+
+      final resolved = filterPackages(
+        packages,
+        config: config,
+        criteria: criteria(const FilterPubGet(state: PubGetState.resolved)),
+        pubGetContext: buildPubGetMatchContext(
+          rippleRootPath: config.rootPath,
+          packages: packages,
+        ),
+      );
+      expect(names(resolved), containsAll(['_', 'a', 'b']));
+    });
+  });
+
+  group('filterExpressionHasLivePubGet', () {
+    test('detects live pubGet nested in presets', () {
+      final presets = <String, FilterExpr>{
+        'needsPubGetLive': const FilterPubGet(
+          state: PubGetState.missing,
+          asOf: PubGetAsOf.live,
+        ),
+        'nested': const FilterAnd([
+          FilterMatch(['core']),
+          FilterPreset('needsPubGetLive'),
+        ]),
+      };
+
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('needsPubGetLive'),
+          presets: presets,
+        ),
+        isTrue,
+      );
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('nested'),
+          presets: presets,
+        ),
+        isTrue,
+      );
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('withTestDir'),
+          presets: {
+            'withTestDir': const FilterDirExists(['test']),
+          },
+        ),
+        isFalse,
+      );
+    });
+
+    test('start asOf inside a preset is not live', () {
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('snapshot'),
+          presets: {
+            'snapshot': const FilterPubGet(
+              state: PubGetState.missing,
+              asOf: PubGetAsOf.start,
+            ),
+          },
+        ),
+        isFalse,
+      );
+    });
+
+    test('cycles in presets do not throw', () {
+      expect(
+        filterExpressionHasLivePubGet(
+          const FilterPreset('a'),
+          presets: {
+            'a': const FilterPreset('b'),
+            'b': const FilterPreset('a'),
+          },
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('packageStillMatchesLivePubGet', () {
+    late Directory temp;
+    late RippleConfig liveConfig;
+    late List<RipplePackage> livePackages;
+    late PubGetMatchContext liveContext;
+
+    void writePackageConfig(String packageDir, {required DateTime modified}) {
+      final file = File(
+        p.join(packageDir, '.dart_tool', 'package_config.json'),
+      );
+      file
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      file.setLastModifiedSync(modified);
+    }
+
+    setUp(() {
+      temp = Directory.systemTemp.createTempSync('ripple_live_recheck_');
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+''');
+      _writePubspec(
+        p.join(temp.path, 'packages', 'core'),
+        '''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'app'),
+        '''
+name: app
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+dependencies:
+  core:
+    path: ../core
+''',
+      );
+      _writePubspec(
+        p.join(temp.path, 'packages', 'other'),
+        '''
+name: other
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+
+      liveConfig = loadRippleConfig(start: temp);
+      livePackages = discoverPackages(liveConfig);
+      liveContext = buildPubGetMatchContext(
+        rippleRootPath: liveConfig.rootPath,
+        packages: livePackages,
+      );
+    });
+
+    tearDown(() {
+      if (temp.existsSync()) {
+        temp.deleteSync(recursive: true);
+      }
+    });
+
+    test('seed match + live pubGet does not drop expansion dependents', () {
+      final seedCriteria = criteria(
+        const FilterAnd([
+          FilterMatch(['core']),
+          FilterPubGet(state: PubGetState.missing, asOf: PubGetAsOf.live),
+        ]),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        dependentsFilters: const GraphExpansionFilters(),
+        pubGetContext: liveContext,
+      );
+
+      expect(names(selection.seeds), ['core']);
+      expect(names(selection.dependents), ['app']);
+
+      final app = selection.dependents.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: const GraphExpansionFilters(),
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+    });
+
+    test('seed is skipped after live missing resolves', () {
+      final seedCriteria = criteria(
+        const FilterPubGet(state: PubGetState.missing, asOf: PubGetAsOf.live),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        pubGetContext: liveContext,
+      );
+      final core = selection.seeds.singleWhere((p) => p.name == 'core');
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'core'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isFalse,
+      );
+    });
+
+    test('preset-wrapped live pubGet enables seed recheck', () {
+      final presetTemp =
+          Directory.systemTemp.createTempSync('ripple_live_preset_');
+      addTearDown(() {
+        if (presetTemp.existsSync()) {
+          presetTemp.deleteSync(recursive: true);
+        }
+      });
+      File(p.join(presetTemp.path, 'ripple.yaml')).writeAsStringSync('''
+packages:
+  include:
+    - packages/*
+  filtersPresets:
+    needsGet:
+      - pubGet: missing
+        asOf: live
+''');
+      _writePubspec(
+        p.join(presetTemp.path, 'packages', 'core'),
+        '''
+name: core
+version: 1.0.0
+environment:
+  sdk: ^3.5.0
+''',
+      );
+      final presetConfig = loadRippleConfig(start: presetTemp);
+      final presetPackages = discoverPackages(presetConfig);
+      final presetContext = buildPubGetMatchContext(
+        rippleRootPath: presetConfig.rootPath,
+        packages: presetPackages,
+      );
+      final seedCriteria = criteria(const FilterPreset('needsGet'));
+      expect(
+        filterExpressionHasLivePubGet(
+          seedCriteria.expression,
+          presets: presetConfig.packages.filtersPresets,
+        ),
+        isTrue,
+      );
+
+      final selection = selectPackages(
+        presetPackages,
+        config: presetConfig,
+        criteria: seedCriteria,
+        pubGetContext: presetContext,
+      );
+      final core = selection.seeds.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: presetConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: presetContext,
+          packagesForChangedMapping: presetPackages,
+        ),
+        isTrue,
+      );
+
+      final file = File(
+        p.join(presetTemp.path, 'packages', 'core', '.dart_tool',
+            'package_config.json'),
+      );
+      file
+        ..createSync(recursive: true)
+        ..writeAsStringSync('{"configVersion":2,"packages":[]}\n');
+      file.setLastModifiedSync(DateTime.now().add(const Duration(seconds: 2)));
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: core,
+          config: presetConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          pubGetContext: presetContext,
+          packagesForChangedMapping: presetPackages,
+        ),
+        isFalse,
+      );
+    });
+
+    test('expansion live pubGet rechecks with expansion expression only', () {
+      final seedCriteria = criteria(const FilterMatch(['core']));
+      const dependentsFilters = GraphExpansionFilters(
+        expression: FilterPubGet(
+          state: PubGetState.missing,
+          asOf: PubGetAsOf.live,
+        ),
+      );
+      final selection = selectPackages(
+        livePackages,
+        config: liveConfig,
+        criteria: seedCriteria,
+        dependentsFilters: dependentsFilters,
+        pubGetContext: liveContext,
+      );
+      final app = selection.dependents.single;
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: dependentsFilters,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isTrue,
+      );
+
+      writePackageConfig(
+        p.join(temp.path, 'packages', 'app'),
+        modified: DateTime.now().add(const Duration(seconds: 2)),
+      );
+
+      expect(
+        packageStillMatchesLivePubGet(
+          package: app,
+          config: liveConfig,
+          seedCriteria: seedCriteria,
+          selection: selection,
+          dependentsFilters: dependentsFilters,
+          pubGetContext: liveContext,
+          packagesForChangedMapping: livePackages,
+        ),
+        isFalse,
       );
     });
   });

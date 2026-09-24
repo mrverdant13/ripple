@@ -120,13 +120,13 @@ class RunCommand extends RippleCommand {
         valueHelp: 'dart|flutter',
         allowed: packageSdkValues,
       )
-      ..addFlag(
-        needsPubGetFlagName,
-        help: 'Only packages whose dart pub get looks stale: missing '
-            '.dart_tool/package_config.json, or that file is older than the '
-            'package pubspec.yaml / pubspec.lock. Valid only for exec: '
-            'scripts.',
-        negatable: false,
+      ..addOption(
+        pubGetOptionName,
+        help: 'Only packages whose dart pub get status matches: '
+            'start-missing, start-resolved, live-missing, or live-resolved. '
+            'Valid only for exec: scripts.',
+        valueHelp: 'value',
+        allowed: pubGetCliValues,
       )
       ..addOption(
         overrideOptionName,
@@ -181,8 +181,8 @@ class RunCommand extends RippleCommand {
   /// Option name for `--sdk`.
   static const sdkOptionName = 'sdk';
 
-  /// Flag name for `--needs-pub-get`.
-  static const needsPubGetFlagName = 'needs-pub-get';
+  /// Option name for `--pub-get`.
+  static const pubGetOptionName = 'pub-get';
 
   /// Exit code used when the child process cannot be started.
   static const spawnFailureExitCode = 127;
@@ -238,6 +238,13 @@ class RunCommand extends RippleCommand {
       changed.add(trimmed);
     }
 
+    final pubGetRaw = argResults!.option(pubGetOptionName);
+    FilterPubGet? pubGet;
+    if (pubGetRaw != null) {
+      final parsed = parsePubGetCliValue(pubGetRaw);
+      pubGet = FilterPubGet(state: parsed.state, asOf: parsed.asOf);
+    }
+
     final cliCriteria = PackageFilterCriteria.fromNameGlobs(
       match: argResults!.multiOption(matchOptionName),
       noMatch: argResults!.multiOption(noMatchOptionName),
@@ -250,7 +257,7 @@ class RunCommand extends RippleCommand {
       presets: argResults!.multiOption(presetOptionName),
       changed: changed,
       sdk: argResults!.option(sdkOptionName),
-      needsPubGet: argResults!.flag(needsPubGetFlagName) ? true : null,
+      pubGet: pubGet,
     ).withPackageNameSelection(
       ripplePackagesEnv: Platform.environment[ripplePackagesEnvVar],
     );
@@ -283,7 +290,7 @@ class RunCommand extends RippleCommand {
           'filters.\n'
           'Remove --group, --match, --no-match, --dir-exists, --file-exists, '
           '--no-dir-exists, --no-file-exists, --depends-on, --preset, '
-          '--changed, --sdk, and unset '
+          '--changed, --sdk, --pub-get, and unset '
           '$ripplePackagesEnvVar.',
         );
       }
@@ -357,13 +364,32 @@ class RunCommand extends RippleCommand {
         PackageFilterCriteria.fromScriptFilters(script.filters);
     final criteria = scriptCriteria.intersect(cliCriteria);
     final discovered = discoverPackages(config);
-    final packages = selectPackages(
+    final pubGetContext = buildPubGetMatchContext(
+      rippleRootPath: config.rootPath,
+      packages: discovered,
+    );
+    final presets = config.packages.filtersPresets;
+    final recheckLivePubGet = filterExpressionHasLivePubGet(
+          criteria.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          script.dependentsFilters?.expression,
+          presets: presets,
+        ) ||
+        filterExpressionHasLivePubGet(
+          script.dependenciesFilters?.expression,
+          presets: presets,
+        );
+    final selection = selectPackages(
       discovered,
       config: config,
       criteria: criteria,
       dependentsFilters: script.dependentsFilters,
       dependenciesFilters: script.dependenciesFilters,
-    ).packages;
+      pubGetContext: pubGetContext,
+    );
+    final packages = selection.packages;
 
     final failFast = argResults!.flag(failFastFlagName);
     final concurrency = _resolveCliConcurrency(script.concurrency);
@@ -378,6 +404,20 @@ class RunCommand extends RippleCommand {
       concurrency: concurrency,
       failFast: failFast,
       run: (package) async {
+        if (recheckLivePubGet &&
+            !packageStillMatchesLivePubGet(
+              package: package,
+              config: config,
+              seedCriteria: criteria,
+              selection: selection,
+              dependentsFilters: script.dependentsFilters,
+              dependenciesFilters: script.dependenciesFilters,
+              pubGetContext: pubGetContext,
+              packagesForChangedMapping: discovered,
+            )) {
+          return 0;
+        }
+
         final vars = rippleEnvironment(
           rootPath: config.rootPath,
           package: package,

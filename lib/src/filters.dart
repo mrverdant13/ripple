@@ -8,10 +8,52 @@ import 'package:path/path.dart' as p;
 import 'package:pubspec_parse/pubspec_parse.dart';
 
 import 'config.dart';
+import 'dart_workspace.dart';
 import 'discovery.dart';
 import 'git_diff.dart';
 import 'graph.dart';
 import 'list_format.dart';
+
+/// Context for evaluating [FilterPubGet] leaves.
+class PubGetMatchContext {
+  /// Creates a match context.
+  const PubGetMatchContext({
+    required this.workspaces,
+    required this.startMissingByPath,
+  });
+
+  /// Empty context (no workspaces; live checks only; start asOf treats missing).
+  static const empty = PubGetMatchContext(
+    workspaces: [],
+    startMissingByPath: {},
+  );
+
+  /// Detected Dart workspaces under the Ripple root.
+  final List<DartWorkspace> workspaces;
+
+  /// Snapshot of `packagePubGetIsMissing` keyed by absolute package path.
+  final Map<String, bool> startMissingByPath;
+}
+
+/// Builds a [PubGetMatchContext] for [packages] under [rippleRootPath].
+PubGetMatchContext buildPubGetMatchContext({
+  required String rippleRootPath,
+  required List<RipplePackage> packages,
+  List<DartWorkspace>? workspaces,
+}) {
+  final resolvedWorkspaces = workspaces ?? detectDartWorkspaces(rippleRootPath);
+  final startMissingByPath = <String, bool>{
+    for (final package in packages)
+      package.path: packagePubGetIsMissing(
+        package,
+        workspaces: resolvedWorkspaces,
+      ),
+  };
+  return PubGetMatchContext(
+    workspaces: resolvedWorkspaces,
+    startMissingByPath: Map<String, bool>.unmodifiable(startMissingByPath),
+  );
+}
 
 /// Environment variable for comma-separated package name selection.
 ///
@@ -57,7 +99,7 @@ class PackageFilterCriteria {
     List<String> presets = const [],
     List<String> changed = const [],
     String? sdk,
-    bool? needsPubGet,
+    FilterPubGet? pubGet,
     List<String>? packageNames,
   }) {
     final leaves = <FilterExpr>[
@@ -72,7 +114,7 @@ class PackageFilterCriteria {
       for (final preset in presets) FilterPreset(preset),
       if (changed.isNotEmpty) FilterChanged(changed),
       if (sdk != null) FilterSdk(sdk),
-      if (needsPubGet != null) FilterNeedsPubGet(needsPubGet),
+      if (pubGet != null) pubGet,
     ];
     return PackageFilterCriteria(
       expression: _andLeaves(leaves),
@@ -197,7 +239,7 @@ FilterExpr resolveFilterPresets(
     FilterNoMatch() ||
     FilterChanged() ||
     FilterSdk() ||
-    FilterNeedsPubGet() =>
+    FilterPubGet() =>
       expression,
   };
 }
@@ -312,6 +354,7 @@ PackageSelection selectPackages(
   GraphExpansionFilters? dependentsFilters,
   GraphExpansionFilters? dependenciesFilters,
   Map<String, List<RipplePackage>>? groupMembership,
+  PubGetMatchContext pubGetContext = PubGetMatchContext.empty,
 }) {
   final seeds = filterPackages(
     packages,
@@ -319,6 +362,7 @@ PackageSelection selectPackages(
     criteria: criteria,
     groupMembership: groupMembership,
     packagesForChangedMapping: packages,
+    pubGetContext: pubGetContext,
   );
 
   if (dependentsFilters == null && dependenciesFilters == null) {
@@ -342,6 +386,7 @@ PackageSelection selectPackages(
           expansion: dependentsFilters,
           groupMembership: groups,
           allPackages: packages,
+          pubGetContext: pubGetContext,
         );
   final dependencies = dependenciesFilters == null
       ? const <RipplePackage>[]
@@ -351,6 +396,7 @@ PackageSelection selectPackages(
           expansion: dependenciesFilters,
           groupMembership: groups,
           allPackages: packages,
+          pubGetContext: pubGetContext,
         );
 
   final selected = <String, RipplePackage>{
@@ -375,6 +421,7 @@ List<RipplePackage> _filterClosure(
   required GraphExpansionFilters expansion,
   required Map<String, List<RipplePackage>> groupMembership,
   required List<RipplePackage> allPackages,
+  PubGetMatchContext pubGetContext = PubGetMatchContext.empty,
 }) {
   final candidates = closure.toList()
     ..sort((a, b) => a.relativePath.compareTo(b.relativePath));
@@ -384,6 +431,7 @@ List<RipplePackage> _filterClosure(
     criteria: PackageFilterCriteria(expression: expansion.expression),
     groupMembership: groupMembership,
     packagesForChangedMapping: allPackages,
+    pubGetContext: pubGetContext,
   );
 }
 
@@ -404,6 +452,7 @@ List<RipplePackage> filterPackages(
   PackageFilterCriteria criteria = const PackageFilterCriteria(),
   Map<String, List<RipplePackage>>? groupMembership,
   List<RipplePackage>? packagesForChangedMapping,
+  PubGetMatchContext pubGetContext = PubGetMatchContext.empty,
 }) {
   if (criteria.isEmpty) {
     return List<RipplePackage>.unmodifiable(packages);
@@ -470,6 +519,7 @@ List<RipplePackage> filterPackages(
           globCache: globCache,
           pubspecCache: pubspecCache,
           changedContext: changedContext,
+          pubGetContext: pubGetContext,
         )) {
       continue;
     }
@@ -495,7 +545,7 @@ Set<String> _collectGroupNames(FilterExpr expression) {
     FilterPreset() ||
     FilterChanged() ||
     FilterSdk() ||
-    FilterNeedsPubGet() =>
+    FilterPubGet() =>
       const {},
   };
 }
@@ -535,6 +585,7 @@ bool _matchesExpression(
   required Map<String, Glob> globCache,
   required Map<String, Pubspec> pubspecCache,
   required _ChangedFilterMatchContext changedContext,
+  required PubGetMatchContext pubGetContext,
 }) {
   return switch (expression) {
     FilterAnd(:final children) => children.every(
@@ -545,6 +596,7 @@ bool _matchesExpression(
           globCache: globCache,
           pubspecCache: pubspecCache,
           changedContext: changedContext,
+          pubGetContext: pubGetContext,
         ),
       ),
     FilterOr(:final children) => children.any(
@@ -555,6 +607,7 @@ bool _matchesExpression(
           globCache: globCache,
           pubspecCache: pubspecCache,
           changedContext: changedContext,
+          pubGetContext: pubGetContext,
         ),
       ),
     FilterDirExists(:final paths) => _matchesDirExists(package, paths),
@@ -572,12 +625,39 @@ bool _matchesExpression(
     final FilterChanged filter =>
       changedContext.changedOwners(filter).contains(package.relativePath),
     FilterSdk(:final sdk) => _matchesSdk(package, sdk, pubspecCache),
-    FilterNeedsPubGet(:final needsPubGet) =>
-      packageNeedsPubGet(package) == needsPubGet,
+    FilterPubGet(:final state, :final asOf) => _matchesPubGet(
+        package,
+        state: state,
+        asOf: asOf,
+        pubGetContext: pubGetContext,
+      ),
     // Presets are expanded by [resolveFilterPresets] before matching.
     FilterPreset(:final name) => throw StateError(
         'Unresolved filter preset "$name" during evaluation',
       ),
+  };
+}
+
+bool _matchesPubGet(
+  RipplePackage package, {
+  required PubGetState state,
+  required PubGetAsOf asOf,
+  required PubGetMatchContext pubGetContext,
+}) {
+  final missing = switch (asOf) {
+    PubGetAsOf.start => pubGetContext.startMissingByPath[package.path] ??
+        packagePubGetIsMissing(
+          package,
+          workspaces: pubGetContext.workspaces,
+        ),
+    PubGetAsOf.live => packagePubGetIsMissing(
+        package,
+        workspaces: pubGetContext.workspaces,
+      ),
+  };
+  return switch (state) {
+    PubGetState.missing => missing,
+    PubGetState.resolved => !missing,
   };
 }
 
@@ -684,14 +764,142 @@ bool _matchesSdk(
   return packageSdkLabel(_cachedPubspec(package, pubspecCache)) == sdk;
 }
 
+/// Whether [expression] contains any [FilterPubGet] with [PubGetAsOf.live].
+///
+/// [FilterPreset] nodes are expanded via [presets] (with cycle detection)
+/// before the traversal continues.
+bool filterExpressionHasLivePubGet(
+  FilterExpr? expression, {
+  Map<String, FilterExpr> presets = const {},
+  List<String> stack = const [],
+}) {
+  if (expression == null) {
+    return false;
+  }
+  return switch (expression) {
+    FilterAnd(:final children) || FilterOr(:final children) => children.any(
+        (child) => filterExpressionHasLivePubGet(
+          child,
+          presets: presets,
+          stack: stack,
+        ),
+      ),
+    FilterPubGet(:final asOf) => asOf == PubGetAsOf.live,
+    FilterPreset(:final name) => _presetHasLivePubGet(
+        name,
+        presets: presets,
+        stack: stack,
+      ),
+    _ => false,
+  };
+}
+
+bool _presetHasLivePubGet(
+  String name, {
+  required Map<String, FilterExpr> presets,
+  required List<String> stack,
+}) {
+  if (stack.contains(name)) {
+    return false;
+  }
+  final body = presets[name];
+  if (body == null) {
+    return false;
+  }
+  return filterExpressionHasLivePubGet(
+    body,
+    presets: presets,
+    stack: [...stack, name],
+  );
+}
+
+/// Whether [package] should still run under live `pubGet` recheck rules.
+///
+/// Seeds are re-filtered with [seedCriteria]. Expansion-only packages are
+/// re-filtered only with the expansion expression that selected them — never
+/// with seed criteria (so `--match` / `RIPPLE_PACKAGES` do not drop
+/// dependents/dependencies). Expansion packages whose selecting filters have
+/// no live `pubGet` are never skipped.
+bool packageStillMatchesLivePubGet({
+  required RipplePackage package,
+  required RippleConfig config,
+  required PackageFilterCriteria seedCriteria,
+  required PackageSelection selection,
+  GraphExpansionFilters? dependentsFilters,
+  GraphExpansionFilters? dependenciesFilters,
+  required PubGetMatchContext pubGetContext,
+  List<RipplePackage>? packagesForChangedMapping,
+}) {
+  final presets = config.packages.filtersPresets;
+  final seedPaths = {for (final seed in selection.seeds) seed.path};
+  if (seedPaths.contains(package.path)) {
+    if (!filterExpressionHasLivePubGet(
+      seedCriteria.expression,
+      presets: presets,
+    )) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: seedCriteria,
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  final dependentPaths = {
+    for (final dependent in selection.dependents) dependent.path,
+  };
+  if (dependentPaths.contains(package.path)) {
+    final expression = dependentsFilters?.expression;
+    if (!filterExpressionHasLivePubGet(expression, presets: presets)) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: PackageFilterCriteria(expression: expression),
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  final dependencyPaths = {
+    for (final dependency in selection.dependencies) dependency.path,
+  };
+  if (dependencyPaths.contains(package.path)) {
+    final expression = dependenciesFilters?.expression;
+    if (!filterExpressionHasLivePubGet(expression, presets: presets)) {
+      return true;
+    }
+    return filterPackages(
+      [package],
+      config: config,
+      criteria: PackageFilterCriteria(expression: expression),
+      pubGetContext: pubGetContext,
+      packagesForChangedMapping: packagesForChangedMapping,
+    ).isNotEmpty;
+  }
+
+  return true;
+}
+
 /// Whether [package] looks like it needs `dart pub get`.
 ///
-/// Returns `true` when `.dart_tool/package_config.json` is missing or its
-/// modification time is older than that package's `pubspec.yaml` or
-/// `pubspec.lock` (when present). Only per-package files are considered.
-bool packageNeedsPubGet(RipplePackage package) {
-  final packageConfig =
-      File(p.join(package.path, '.dart_tool', 'package_config.json'));
+/// Returns `true` when the resolution root's `.dart_tool/package_config.json`
+/// is missing or older than that root's `pubspec.yaml` / `pubspec.lock`, or
+/// (for workspace members) older than any member `pubspec.yaml`.
+///
+/// Standalone packages use their own directory as the resolution root.
+/// Workspace members/roots use the Dart workspace root (via [workspaces] or
+/// `.dart_tool/pub/workspace_ref.json`).
+bool packagePubGetIsMissing(
+  RipplePackage package, {
+  List<DartWorkspace> workspaces = const [],
+}) {
+  final root = resolutionRootFor(package.path, workspaces: workspaces);
+  final packageConfig = File(p.join(root, '.dart_tool', 'package_config.json'));
   if (!packageConfig.existsSync()) {
     return true;
   }
@@ -703,14 +911,24 @@ bool packageNeedsPubGet(RipplePackage package) {
     return true;
   }
 
-  final pubspec = File(p.join(package.path, 'pubspec.yaml'));
-  if (_fileIsNewerThan(pubspec, packageConfigModified)) {
+  final rootPubspec = File(p.join(root, 'pubspec.yaml'));
+  if (_fileIsNewerThan(rootPubspec, packageConfigModified)) {
     return true;
   }
 
-  final lock = File(p.join(package.path, 'pubspec.lock'));
-  if (_fileIsNewerThan(lock, packageConfigModified)) {
+  final rootLock = File(p.join(root, 'pubspec.lock'));
+  if (_fileIsNewerThan(rootLock, packageConfigModified)) {
     return true;
+  }
+
+  final workspace = workspaceFor(package.path, workspaces: workspaces);
+  if (workspace != null) {
+    for (final memberPath in workspace.memberPaths) {
+      final memberPubspec = File(p.join(memberPath, 'pubspec.yaml'));
+      if (_fileIsNewerThan(memberPubspec, packageConfigModified)) {
+        return true;
+      }
+    }
   }
 
   return false;

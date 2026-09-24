@@ -46,6 +46,7 @@ ripple/                         # repo root = package root
 │       ├── discovery.dart
 │       ├── filters.dart
 │       ├── git_diff.dart       # changed: descriptor parse + git path mapping
+│       ├── dart_workspace.dart # Dart pub workspace parse + layout validation
 │       ├── graph.dart          # Workspace dep graph + transitive closures
 │       ├── exec.dart           # Process runner helper (cwd/env/exit code)
 │       ├── replacements.dart   # {{key}} expansion from replacements map
@@ -175,10 +176,12 @@ Prioritize coverage for:
 
 - Glob include/exclude and package discovery
 - Filter combos (`dirExists`, `fileExists`, `noDirExists`, `noFileExists`,
-  `dependsOn`, `group`, `match` / `noMatch`, `sdk`, `needsPubGet`, nested
+  `dependsOn`, `group`, `match` / `noMatch`, `sdk`, `pubGet` / `asOf`, nested
   `and` / `or`, `preset` / `packages.filtersPresets`, `--match` /
-  `--no-match` / `--preset` / `--sdk` / `--needs-pub-get`, `RIPPLE_PACKAGES`)
+  `--no-match` / `--preset` / `--sdk` / `--pub-get`, `RIPPLE_PACKAGES`)
   and rejection of map-form `filters`
+- Dart workspace detection (`workspace:` include entries, nested members,
+  intermediate-standalone hard-fail, workspace-aware `pubGet`)
 - Graph expansion on `exec:` scripts (`dependentsFilters` /
   `dependenciesFilters`: absent vs `[]` vs constrained AST; workspace-only
   edges; transitive forward/reverse closures; `RIPPLE_PACKAGES` seed narrowing;
@@ -329,12 +332,14 @@ git tag -l 'ripple_cli/*'
 - Include **tests** for any behavior changes (unit, fixture, or CLI as appropriate).
 - Link related issues or milestone items when applicable.
 - Do not commit secrets, `.env` files, or local editor state.
-- Do not add workspace linking, foreign config importers, or consumer-specific paths.
+- Do not add workspace linking/generation, foreign config importers, or
+  consumer-specific paths.
 
 ### Non-goals (do not expand scope in drive-by PRs)
 
 - Importing or emulating another tool's config format
-- Dart workspace / `pubspec_overrides` generation
+- Generating Dart `workspace:` / `resolution: workspace` / `pubspec_overrides`
+  (detecting and respecting existing Dart workspaces is in scope)
 - Cross-script composition or sip-style `${{ }}` references (in-script YAML
   lists under `run:` / `exec:` are supported)
 - Versioning, changelog, or publish orchestration beyond git tags (until planned)

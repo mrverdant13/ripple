@@ -329,7 +329,7 @@ environment:
       expect(help, contains('--depends-on'));
       expect(help, contains('--preset'));
       expect(help, contains('--sdk'));
-      expect(help, contains('--needs-pub-get'));
+      expect(help, contains('--pub-get'));
       expect(help, contains('--dependents'));
       expect(help, contains('--dependencies'));
       expect(help, contains('--format'));
@@ -971,10 +971,9 @@ dependencies:
       expect(result.stderr, isNot(contains('Unhandled exception')));
     });
 
-    test('--needs-pub-get lists packages with stale pub get metadata',
+    test('--pub-get live-missing lists packages with stale pub get metadata',
         () async {
-      final temp =
-          Directory.systemTemp.createTempSync('ripple_list_needs_pub_get_');
+      final temp = Directory.systemTemp.createTempSync('ripple_list_pub_get_');
       addTearDown(() {
         if (temp.existsSync()) {
           temp.deleteSync(recursive: true);
@@ -1011,7 +1010,7 @@ environment:
       );
 
       final result = await runRipple(
-        ['list', '--needs-pub-get'],
+        ['list', '--pub-get', 'live-missing'],
         workingDirectory: temp.path,
       );
 

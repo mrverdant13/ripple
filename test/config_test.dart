@@ -39,7 +39,10 @@ scripts:
 
       expect(config.rootPath, '/tmp/demo');
       expect(config.name, 'demo');
-      expect(config.packages.include, ['packages/*', 'tool']);
+      expect(config.packages.include, [
+        const PackageIncludeGlob('packages/*'),
+        const PackageIncludeGlob('tool'),
+      ]);
       expect(config.packages.exclude, ['**/example/**']);
       expect(config.packages.groups, {
         'core': ['packages/a', 'packages/b'],
@@ -1431,6 +1434,44 @@ packages:
       ]);
     });
 
+    test('parses workspace include entries', () {
+      final config = parseRippleYaml(
+        '''
+packages:
+  include:
+    - packages/standalone_*
+    - workspace: packages/app_ws
+    - packages/other/*
+''',
+        rootPath: '/r',
+      );
+      expect(config.packages.include, [
+        const PackageIncludeGlob('packages/standalone_*'),
+        const PackageIncludeWorkspace('packages/app_ws'),
+        const PackageIncludeGlob('packages/other/*'),
+      ]);
+    });
+
+    test('rejects invalid workspace include maps', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+packages:
+  include:
+    - workspace: ''
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('workspace must be a non-empty string'),
+          ),
+        ),
+      );
+    });
+
     test('parses sdk filter on exec scripts', () {
       final config = parseRippleYaml(
         '''
@@ -1456,32 +1497,35 @@ scripts:
       );
     });
 
-    test('parses needsPubGet filter on exec scripts', () {
+    test('parses pubGet filter on exec scripts', () {
       final config = parseRippleYaml(
         '''
 scripts:
   bootstrap:
     exec: dart pub get
     filters:
-      - needsPubGet: true
+      - pubGet: missing
   skipFresh:
     exec: dart analyze .
     filters:
-      - needsPubGet: false
+      - pubGet: resolved
+        asOf: start
 ''',
         rootPath: '/r',
       );
       expect(
         config.scripts['bootstrap']!.filters,
-        const FilterAnd([FilterNeedsPubGet(true)]),
+        const FilterAnd([FilterPubGet(state: PubGetState.missing)]),
       );
       expect(
         config.scripts['skipFresh']!.filters,
-        const FilterAnd([FilterNeedsPubGet(false)]),
+        const FilterAnd([
+          FilterPubGet(state: PubGetState.resolved, asOf: PubGetAsOf.start),
+        ]),
       );
     });
 
-    test('rejects non-boolean needsPubGet filter', () {
+    test('rejects invalid pubGet filter values', () {
       expect(
         () => parseRippleYaml(
           '''
@@ -1489,7 +1533,7 @@ scripts:
   bad:
     exec: dart pub get
     filters:
-      - needsPubGet: yes
+      - pubGet: stale
 ''',
           rootPath: '/r',
         ),
@@ -1497,7 +1541,7 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            contains('needsPubGet` must be a boolean'),
+            contains('pubGet` must be `missing` or `resolved`'),
           ),
         ),
       );
@@ -2079,7 +2123,7 @@ scripts:
       final config = loadRippleConfig(start: nested);
       expect(config.rootPath, root.path);
       expect(config.name, 'nested-demo');
-      expect(config.packages.include, ['packages/*']);
+      expect(config.packages.include, [const PackageIncludeGlob('packages/*')]);
       expect(config.scripts['format.ci']!.kind, ScriptKind.run);
     });
 
