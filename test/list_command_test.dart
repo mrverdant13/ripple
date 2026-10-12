@@ -524,8 +524,6 @@ name: changed_kinds
 packages:
   include:
     - packages/*
-  changedIgnore:
-    - '**/*.md'
 ''');
       for (final name in ['core', 'ui']) {
         final dir = Directory(p.join(temp.path, 'packages', name))
@@ -597,11 +595,15 @@ environment:
       expect(stdoutLines(unstaged), ['packages/ui']);
 
       final workdir = await runRipple(
-        ['list', '--changed', 'workdir:HEAD'],
+        [
+          'list',
+          '--changed',
+          '{checks: workdir:HEAD, exclude: ["**/*.md"]}',
+        ],
         workingDirectory: temp.path,
       );
       expect(workdir.exitCode, 0, reason: workdir.stderr as String);
-      // README.md is changedIgnore; only code paths map to packages.
+      // README.md matches exclude; only code paths map to packages.
       expect(stdoutLines(workdir), ['packages/core', 'packages/ui']);
     });
 

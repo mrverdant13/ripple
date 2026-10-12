@@ -179,7 +179,11 @@ Prioritize coverage for:
   `dependsOn`, `group`, `match` / `noMatch`, `sdk`, `pubGet` / `asOf`, nested
   `and` / `or`, `preset` / `packages.filtersPresets`, `--match` /
   `--no-match` / `--preset` / `--sdk` / `--pub-get`, `RIPPLE_PACKAGES`)
-  and rejection of map-form `filters`
+  and rejection of map-form `filters`. `changed` is a descriptor string, a
+  list of descriptors, or a map with `checks` plus optional `include` /
+  `exclude` (repo-relative path globs applied before package ownership).
+  CLI `--changed` accepts the same three forms; repeated values union.
+  `packages.changedIgnore` is rejected
 - Dart workspace detection (`workspace:` include entries, nested members,
   intermediate-standalone hard-fail, workspace-aware `pubGet`)
 - Graph expansion on `exec:` scripts (`dependentsFilters` /

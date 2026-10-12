@@ -215,8 +215,7 @@ final class FilterNoMatch extends FilterExpr {
 /// from the **union** of all descriptors after the path filter, then
 /// longest-prefix mapped. [include] keeps a path when it matches any glob.
 /// [exclude] drops a path when it matches any glob. When both are set, include
-/// is applied first. When both are empty, every owned path counts unless the
-/// caller supplies a fallback exclude.
+/// is applied first. When both are empty, every owned path counts.
 ///
 /// A YAML string becomes a one-element [descriptors] list. A YAML list is the
 /// union. A YAML map sets `checks` (string or list) plus optional `include`
@@ -746,7 +745,6 @@ class RipplePackages {
     this.exclude = const [],
     this.groups = const {},
     this.filtersPresets = const {},
-    this.changedIgnore = const [],
   });
 
   /// Include entries (globs and/or `workspace:` expansions) relative to the
@@ -763,11 +761,6 @@ class RipplePackages {
   ///
   /// Each value is a list-form filter expression (implicit [FilterAnd]).
   final Map<String, FilterExpr> filtersPresets;
-
-  /// Repo-relative path globs ignored by `changed` path-to-package mapping.
-  ///
-  /// Matching changed files are dropped before longest-prefix ownership.
-  final List<String> changedIgnore;
 }
 
 /// A filter-scoped overlay of [RippleConfig.replacements].
@@ -1373,12 +1366,20 @@ RipplePackages _packagesFromValue(
     );
   }
   final Map<dynamic, dynamic> map = value;
+  if (map.containsKey('changedIgnore')) {
+    throw CheckedFromJsonException(
+      map,
+      'changedIgnore',
+      'RipplePackages',
+      '`packages.changedIgnore` has been removed. Use `include` and `exclude` '
+          'on a `changed` filter',
+    );
+  }
   return RipplePackages(
     include: _includeEntriesFromValue(map['include'], map),
     exclude: _stringList(map, 'exclude', 'RipplePackages'),
     groups: _groupsFromValue(map['groups'], map),
     filtersPresets: _filtersPresetsFromValue(map['filtersPresets'], map),
-    changedIgnore: _stringList(map, 'changedIgnore', 'RipplePackages'),
   );
 }
 

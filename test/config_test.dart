@@ -49,7 +49,6 @@ scripts:
         'e2e': ['packages/*/e2e'],
       });
       expect(config.packages.filtersPresets, isEmpty);
-      expect(config.packages.changedIgnore, isEmpty);
 
       final format = config.scripts['format.ci']!;
       expect(format.kind, ScriptKind.run);
@@ -1591,22 +1590,30 @@ scripts:
       );
     });
 
-    test('parses packages.changedIgnore globs', () {
-      final config = parseRippleYaml(
-        '''
+    test('rejects packages.changedIgnore', () {
+      expect(
+        () => parseRippleYaml(
+          '''
 packages:
   include:
     - packages/*
   changedIgnore:
     - '**/*.md'
-    - '**/CHANGELOG.md'
 ''',
-        rootPath: '/r',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('changedIgnore'),
+              contains('include'),
+              contains('exclude'),
+            ),
+          ),
+        ),
       );
-      expect(config.packages.changedIgnore, [
-        '**/*.md',
-        '**/CHANGELOG.md',
-      ]);
     });
 
     test('parses workspace include entries', () {

@@ -1514,8 +1514,6 @@ name: changed_globs
 packages:
   include:
     - packages/*
-  changedIgnore:
-    - '**/*.md'
 ''');
       await _git(tempDir.path, ['init']);
       await _git(tempDir.path, ['config', 'user.email', 'test@test.com']);
@@ -1533,7 +1531,7 @@ packages:
       }
     });
 
-    test('include selects a package that changedIgnore would drop', () {
+    test('include and exclude scope which changed packages match', () {
       final changedConfig = loadRippleConfig(start: tempDir);
       final changedPackages = discoverPackages(changedConfig);
 
@@ -1554,9 +1552,20 @@ packages:
           ),
         ),
       );
+      final codeOnly = filterPackages(
+        changedPackages,
+        config: changedConfig,
+        criteria: criteria(
+          const FilterChanged(
+            ['workdir:HEAD'],
+            exclude: ['**/*.md'],
+          ),
+        ),
+      );
 
-      expect(names(unscoped), ['core']);
+      expect(names(unscoped), ['core', 'docs_pkg']);
       expect(names(docsOnly), ['docs_pkg']);
+      expect(names(codeOnly), ['core']);
     });
   });
 }
