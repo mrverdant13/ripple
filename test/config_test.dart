@@ -1393,7 +1393,78 @@ scripts:
       );
     });
 
-    test('rejects map-form changed filter', () {
+    test('parses changed map with checks, include, and exclude', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  docs:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          include:
+            - '**/*.md'
+            - docs/**
+          exclude:
+            - '**/CHANGELOG.md'
+  localDocs:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks:
+            - since:origin/main
+            - workdir:HEAD
+          include:
+            - '**/*.md'
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['docs']!.filters,
+        const FilterAnd([
+          FilterChanged(
+            ['since:origin/main'],
+            include: ['**/*.md', 'docs/**'],
+            exclude: ['**/CHANGELOG.md'],
+          ),
+        ]),
+      );
+      expect(
+        config.scripts['localDocs']!.filters,
+        const FilterAnd([
+          FilterChanged(
+            ['since:origin/main', 'workdir:HEAD'],
+            include: ['**/*.md'],
+          ),
+        ]),
+      );
+    });
+
+    test('rejects changed map without checks', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          include:
+            - '**/*.md'
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include `checks`'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects unknown keys and empty path lists on changed maps', () {
       expect(
         () => parseRippleYaml(
           '''
@@ -1410,7 +1481,70 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            contains('changed` must be a descriptor string'),
+            contains('unknown'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          include: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('include` list must not be empty'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('checks` list must not be empty'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          exclude:
+            - '['
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Invalid `exclude` glob'),
           ),
         ),
       );

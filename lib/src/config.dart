@@ -4,6 +4,7 @@ library;
 import 'dart:io';
 
 import 'package:checked_yaml/checked_yaml.dart';
+import 'package:glob/glob.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
 
@@ -210,22 +211,188 @@ final class FilterNoMatch extends FilterExpr {
 /// kinds such as `staged` / `since-latest-tag`).
 ///
 /// [descriptors] is a non-empty list. A package matches when it owns a path
-/// from the **union** of all descriptors (path sets merged, then longest-prefix
-/// mapped). A YAML string or a single CLI `--changed` becomes a one-element
-/// list; a YAML list or repeated `--changed` is the union.
+/// from the **union** of all descriptors after the path filter, then
+/// longest-prefix mapped. [include] keeps a path when it matches any glob.
+/// [exclude] drops a path when it matches any glob. When both are set, include
+/// is applied first. When both are empty, every owned path counts unless the
+/// caller supplies a fallback exclude.
+///
+/// A YAML string becomes a one-element [descriptors] list. A YAML list is the
+/// union. A YAML map sets `checks` (string or list) plus optional `include`
+/// and `exclude`.
 final class FilterChanged extends FilterExpr {
   /// Creates a `changed` leaf from one or more descriptor strings.
-  const FilterChanged(this.descriptors);
+  const FilterChanged(
+    this.descriptors, {
+    this.include = const [],
+    this.exclude = const [],
+  });
 
   /// Descriptor strings, for example `since:origin/main` or `workdir:HEAD`.
   final List<String> descriptors;
 
-  @override
-  bool operator ==(Object other) =>
-      other is FilterChanged && _listEquals(descriptors, other.descriptors);
+  /// Repo-relative path globs. A changed path counts when it matches any glob.
+  ///
+  /// Empty means every path is eligible for [exclude].
+  final List<String> include;
+
+  /// Repo-relative path globs. A changed path is dropped when it matches any
+  /// glob.
+  ///
+  /// Empty means no path is dropped by this leaf.
+  final List<String> exclude;
 
   @override
-  int get hashCode => Object.hashAll(descriptors);
+  bool operator ==(Object other) =>
+      other is FilterChanged &&
+      _listEquals(descriptors, other.descriptors) &&
+      _listEquals(include, other.include) &&
+      _listEquals(exclude, other.exclude);
+
+  @override
+  int get hashCode => Object.hash(
+        Object.hashAll(descriptors),
+        Object.hashAll(include),
+        Object.hashAll(exclude),
+      );
+}
+
+/// Thrown when a decoded `changed` value is not a string, list, or map with
+/// `checks` / `include` / `exclude`.
+class ChangedFilterParseException implements Exception {
+  /// Creates a parse error with a human-readable [message].
+  const ChangedFilterParseException(this.message);
+
+  /// Description of what went wrong.
+  final String message;
+
+  @override
+  String toString() => 'ChangedFilterParseException: $message';
+}
+
+const _changedFilterMapKeys = {'checks', 'include', 'exclude'};
+
+final _changedGlobContext = p.Context(style: p.Style.posix);
+
+/// Interprets a decoded `changed` value.
+///
+/// [value] is a descriptor string, a non-empty list of descriptor strings, or
+/// a map with required `checks` and optional `include` / `exclude`.
+///
+/// Throws [ChangedFilterParseException] for a bad shape and
+/// [RippleConfigException] for an invalid descriptor.
+FilterChanged parseChangedFilterValue(Object? value) {
+  if (value is String) {
+    return FilterChanged([_changedDescriptor(value, 'changed')]);
+  }
+  if (value is List) {
+    return FilterChanged(_changedDescriptors(value, 'changed'));
+  }
+  if (value is Map) {
+    return _changedFilterFromMap(value);
+  }
+  throw const ChangedFilterParseException(
+    '`changed` must be a descriptor string, a non-empty list of descriptor '
+    'strings, or a map with `checks`',
+  );
+}
+
+FilterChanged _changedFilterFromMap(Map<dynamic, dynamic> map) {
+  for (final key in map.keys) {
+    if (key is! String || !_changedFilterMapKeys.contains(key)) {
+      final label = key is String ? key : '$key';
+      throw ChangedFilterParseException(
+        '`changed` map key "$label" is unknown. '
+        'Expected checks, include, or exclude',
+      );
+    }
+  }
+  if (!map.containsKey('checks')) {
+    throw const ChangedFilterParseException(
+      '`changed` map must include `checks`',
+    );
+  }
+  final checks = map['checks'];
+  final List<String> descriptors;
+  if (checks is String) {
+    descriptors = [_changedDescriptor(checks, 'checks')];
+  } else if (checks is List) {
+    descriptors = _changedDescriptors(checks, 'checks');
+  } else {
+    throw const ChangedFilterParseException(
+      '`checks` must be a descriptor string or a non-empty list of '
+      'descriptor strings',
+    );
+  }
+  return FilterChanged(
+    descriptors,
+    include: _changedGlobList(map['include'], 'include'),
+    exclude: _changedGlobList(map['exclude'], 'exclude'),
+  );
+}
+
+String _changedDescriptor(String raw, String label) {
+  final descriptor = raw.trim();
+  if (descriptor.isEmpty) {
+    throw ChangedFilterParseException('`$label` must be a non-empty string');
+  }
+  parseChangedDescriptor(descriptor);
+  return descriptor;
+}
+
+List<String> _changedDescriptors(List<dynamic> value, String label) {
+  if (value.isEmpty) {
+    throw ChangedFilterParseException('`$label` list must not be empty');
+  }
+  final descriptors = <String>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is! String) {
+      throw ChangedFilterParseException(
+        '`$label` entries must be strings (index $i)',
+      );
+    }
+    final descriptor = element.trim();
+    if (descriptor.isEmpty) {
+      throw ChangedFilterParseException(
+        '`$label` entries must be non-empty strings (index $i)',
+      );
+    }
+    parseChangedDescriptor(descriptor);
+    descriptors.add(descriptor);
+  }
+  return List<String>.unmodifiable(descriptors);
+}
+
+List<String> _changedGlobList(Object? value, String field) {
+  if (value == null) {
+    return const [];
+  }
+  if (value is! List) {
+    throw ChangedFilterParseException('`$field` must be a list of strings');
+  }
+  if (value.isEmpty) {
+    throw ChangedFilterParseException('`$field` list must not be empty');
+  }
+  final globs = <String>[];
+  for (var i = 0; i < value.length; i++) {
+    final element = value[i];
+    if (element is! String || element.trim().isEmpty) {
+      throw ChangedFilterParseException(
+        '`$field` entries must be non-empty strings (index $i)',
+      );
+    }
+    final pattern = element.trim();
+    try {
+      Glob(pattern, context: _changedGlobContext);
+    } on FormatException catch (error) {
+      throw ChangedFilterParseException(
+        'Invalid `$field` glob "$pattern": ${error.message}',
+      );
+    }
+    globs.add(pattern);
+  }
+  return List<String>.unmodifiable(globs);
 }
 
 /// Allowed YAML / CLI `sdk` filter values (`dart` or `flutter`).
@@ -1909,63 +2076,16 @@ FilterExpr _filterNodeFromValue(
       }
       return FilterPreset(presetValue);
     case 'changed':
-      final changedValue = entry.value;
-      if (changedValue is String) {
-        if (changedValue.trim().isEmpty) {
-          throw CheckedFromJsonException(
-            parent,
-            'filters',
-            'FilterExpr',
-            'Invalid filter at $path: `changed` must be a non-empty string',
-          );
-        }
-        final descriptor = changedValue.trim();
-        parseChangedDescriptor(descriptor);
-        return FilterChanged([descriptor]);
+      try {
+        return parseChangedFilterValue(entry.value);
+      } on ChangedFilterParseException catch (error) {
+        throw CheckedFromJsonException(
+          parent,
+          'filters',
+          'FilterExpr',
+          'Invalid filter at $path: ${error.message}',
+        );
       }
-      if (changedValue is List) {
-        if (changedValue.isEmpty) {
-          throw CheckedFromJsonException(
-            parent,
-            'filters',
-            'FilterExpr',
-            'Invalid filter at $path: `changed` list must not be empty',
-          );
-        }
-        final descriptors = <String>[];
-        for (var i = 0; i < changedValue.length; i++) {
-          final element = changedValue[i];
-          if (element is! String) {
-            throw CheckedFromJsonException(
-              parent,
-              'filters',
-              'FilterExpr',
-              'Invalid filter at $path: `changed` entries must be strings '
-                  '(index $i)',
-            );
-          }
-          if (element.trim().isEmpty) {
-            throw CheckedFromJsonException(
-              parent,
-              'filters',
-              'FilterExpr',
-              'Invalid filter at $path: `changed` entries must be non-empty '
-                  'strings (index $i)',
-            );
-          }
-          final descriptor = element.trim();
-          parseChangedDescriptor(descriptor);
-          descriptors.add(descriptor);
-        }
-        return FilterChanged(List<String>.unmodifiable(descriptors));
-      }
-      throw CheckedFromJsonException(
-        parent,
-        'filters',
-        'FilterExpr',
-        'Invalid filter at $path: `changed` must be a descriptor string or '
-            'a non-empty list of descriptor strings',
-      );
     case 'sdk':
       final sdkValue = entry.value;
       if (sdkValue is Map || sdkValue is List) {

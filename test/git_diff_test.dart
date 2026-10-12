@@ -97,7 +97,7 @@ void main() {
       expect(owners, {'packages/ui'});
     });
 
-    test('drops paths matching changedIgnore globs', () {
+    test('exclude drops matching paths before ownership', () {
       final packages = [
         const RipplePackage(
           name: 'ui',
@@ -118,10 +118,66 @@ void main() {
         ],
         packages: packages,
         rootPath: '/repo',
-        ignoreGlobs: ['**/*.md'],
+        excludeGlobs: ['**/*.md'],
       );
 
       expect(owners, {'packages/core'});
+    });
+
+    test('include keeps only matching paths', () {
+      final packages = [
+        const RipplePackage(
+          name: 'ui',
+          path: '/repo/packages/ui',
+          relativePath: 'packages/ui',
+        ),
+        const RipplePackage(
+          name: 'core',
+          path: '/repo/packages/core',
+          relativePath: 'packages/core',
+        ),
+      ];
+
+      final owners = mapChangedPathsToPackages(
+        paths: [
+          'packages/ui/README.md',
+          'packages/core/lib/a.dart',
+        ],
+        packages: packages,
+        rootPath: '/repo',
+        includeGlobs: ['**/*.md'],
+      );
+
+      expect(owners, {'packages/ui'});
+    });
+
+    test('include is applied before exclude', () {
+      final packages = [
+        const RipplePackage(
+          name: 'ui',
+          path: '/repo/packages/ui',
+          relativePath: 'packages/ui',
+        ),
+        const RipplePackage(
+          name: 'core',
+          path: '/repo/packages/core',
+          relativePath: 'packages/core',
+        ),
+      ];
+
+      final owners = mapChangedPathsToPackages(
+        paths: [
+          'packages/ui/README.md',
+          'packages/ui/docs/guide.md',
+          'packages/core/lib/a.dart',
+        ],
+        packages: packages,
+        rootPath: '/repo',
+        includeGlobs: ['**/*.md'],
+        excludeGlobs: ['**/docs/**'],
+      );
+
+      expect(owners, {'packages/ui'});
     });
   });
 
@@ -297,7 +353,7 @@ packages:
       );
     });
 
-    test('changedIgnore drops matching paths before ownership', () async {
+    test('exclude drops matching paths before ownership', () async {
       await File(p.join(coreDir.path, 'README.md')).writeAsString('# core\n');
       await File(p.join(uiDir.path, 'lib', 'b.dart'))
           .writeAsString('// ui code\n');
@@ -318,7 +374,7 @@ packages:
           rootPath: config.rootPath,
           descriptor: const ChangedWorkdir('HEAD'),
           packages: packages,
-          ignoreGlobs: ['**/*.md'],
+          excludeGlobs: ['**/*.md'],
         ),
         {'packages/ui'},
       );

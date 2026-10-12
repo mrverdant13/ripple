@@ -1487,6 +1487,89 @@ environment:
       );
     });
   });
+
+  group('filterPackages — changed path globs', () {
+    late Directory tempDir;
+
+    setUp(() async {
+      tempDir = await Directory.systemTemp.createTemp('ripple_changed_globs_');
+      final coreDir = Directory(p.join(tempDir.path, 'packages', 'core'));
+      final docsDir = Directory(p.join(tempDir.path, 'packages', 'docs_pkg'));
+      await coreDir.create(recursive: true);
+      await docsDir.create(recursive: true);
+      await File(p.join(coreDir.path, 'pubspec.yaml')).writeAsString('''
+name: core
+environment:
+  sdk: ^3.5.0
+''');
+      await File(p.join(docsDir.path, 'pubspec.yaml')).writeAsString('''
+name: docs_pkg
+environment:
+  sdk: ^3.5.0
+''');
+      await File(p.join(coreDir.path, 'lib', 'a.dart')).create(recursive: true);
+      await File(p.join(docsDir.path, 'README.md')).writeAsString('# docs\n');
+      await File(p.join(tempDir.path, 'ripple.yaml')).writeAsString('''
+name: changed_globs
+packages:
+  include:
+    - packages/*
+  changedIgnore:
+    - '**/*.md'
+''');
+      await _git(tempDir.path, ['init']);
+      await _git(tempDir.path, ['config', 'user.email', 'test@test.com']);
+      await _git(tempDir.path, ['config', 'user.name', 'test']);
+      await _git(tempDir.path, ['add', '.']);
+      await _git(tempDir.path, ['commit', '-m', 'initial']);
+      await File(p.join(coreDir.path, 'lib', 'a.dart'))
+          .writeAsString('// code\n');
+      await File(p.join(docsDir.path, 'README.md')).writeAsString('# edited\n');
+    });
+
+    tearDown(() async {
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    test('include selects a package that changedIgnore would drop', () {
+      final changedConfig = loadRippleConfig(start: tempDir);
+      final changedPackages = discoverPackages(changedConfig);
+
+      final unscoped = filterPackages(
+        changedPackages,
+        config: changedConfig,
+        criteria: criteria(
+          const FilterChanged(['workdir:HEAD']),
+        ),
+      );
+      final docsOnly = filterPackages(
+        changedPackages,
+        config: changedConfig,
+        criteria: criteria(
+          const FilterChanged(
+            ['workdir:HEAD'],
+            include: ['**/*.md'],
+          ),
+        ),
+      );
+
+      expect(names(unscoped), ['core']);
+      expect(names(docsOnly), ['docs_pkg']);
+    });
+  });
+}
+
+Future<void> _git(String root, List<String> args) async {
+  final result = await Process.run(
+    'git',
+    args,
+    workingDirectory: root,
+  );
+  if (result.exitCode != 0) {
+    fail('git ${args.join(' ')} failed: ${result.stdout} ${result.stderr}');
+  }
 }
 
 void _writePubspec(String packageDir, String contents) {

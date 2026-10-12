@@ -503,7 +503,7 @@ List<RipplePackage> filterPackages(
   final changedContext = _ChangedFilterMatchContext(
     rootPath: config.rootPath,
     mappingPackages: packagesForChangedMapping ?? packages,
-    ignoreGlobs: config.packages.changedIgnore,
+    fallbackExcludeGlobs: config.packages.changedIgnore,
   );
 
   final filtered = <RipplePackage>[];
@@ -554,16 +554,28 @@ final class _ChangedFilterMatchContext {
   _ChangedFilterMatchContext({
     required this.rootPath,
     required this.mappingPackages,
-    this.ignoreGlobs = const [],
+    this.fallbackExcludeGlobs = const [],
   });
 
   final String rootPath;
   final List<RipplePackage> mappingPackages;
-  final List<String> ignoreGlobs;
+
+  /// Exclude globs for a [FilterChanged] that sets neither include nor exclude.
+  ///
+  /// This is `packages.changedIgnore` until that key is removed.
+  final List<String> fallbackExcludeGlobs;
   final Map<String, Set<String>> _cache = {};
 
   Set<String> changedOwners(FilterChanged filter) {
-    final cacheKey = filter.descriptors.join('\u0000');
+    final include = filter.include;
+    final exclude = include.isEmpty && filter.exclude.isEmpty
+        ? fallbackExcludeGlobs
+        : filter.exclude;
+    final cacheKey = [
+      filter.descriptors.join('\u0001'),
+      include.join('\u0001'),
+      exclude.join('\u0001'),
+    ].join('\u0000');
     return _cache.putIfAbsent(cacheKey, () {
       final parsed = [
         for (final raw in filter.descriptors) parseChangedDescriptor(raw),
@@ -572,7 +584,8 @@ final class _ChangedFilterMatchContext {
         rootPath: rootPath,
         descriptors: parsed,
         packages: mappingPackages,
-        ignoreGlobs: ignoreGlobs,
+        includeGlobs: include,
+        excludeGlobs: exclude,
       );
     });
   }
