@@ -89,6 +89,71 @@ void main() {
       expect(stdoutLines(result), ['core', 'ui']);
     });
 
+    test('--changed map selects packages that own a matching path', () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_exec_changed_globs_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: exec_changed
+packages:
+  include:
+    - packages/*
+''');
+      for (final name in ['core', 'ui']) {
+        final dir = Directory(p.join(temp.path, 'packages', name))
+          ..createSync(recursive: true);
+        File(p.join(dir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: $name
+environment:
+  sdk: ^3.5.0
+''');
+        File(p.join(dir.path, 'lib', 'x.dart'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// $name\n');
+      }
+
+      Future<void> git(List<String> args) async {
+        final result = await Process.run(
+          'git',
+          args,
+          workingDirectory: temp.path,
+          runInShell: false,
+        );
+        expect(
+          result.exitCode,
+          0,
+          reason: 'git ${args.join(' ')}: ${result.stderr}',
+        );
+      }
+
+      await git(['init']);
+      await git(['config', 'user.email', 'test@test.com']);
+      await git(['config', 'user.name', 'test']);
+      await git(['add', '.']);
+      await git(['commit', '-m', 'initial']);
+      File(p.join(temp.path, 'packages', 'ui', 'README.md'))
+          .writeAsStringSync('# ui\n');
+
+      final result = await runRipple(
+        [
+          'exec',
+          '--changed',
+          '{checks: workdir:HEAD, include: ["**/*.md"]}',
+          '--',
+          ...probe(['env', 'RIPPLE_PACKAGE_NAME']),
+        ],
+        workingDirectory: temp.path,
+      );
+
+      expect(result.exitCode, 0, reason: result.stderr as String);
+      expect(stdoutLines(result), ['ui']);
+    });
+
     test('--match selects packages by name glob', () async {
       final result = await runRipple([
         'exec',

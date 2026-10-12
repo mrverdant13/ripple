@@ -524,8 +524,6 @@ name: changed_kinds
 packages:
   include:
     - packages/*
-  changedIgnore:
-    - '**/*.md'
 ''');
       for (final name in ['core', 'ui']) {
         final dir = Directory(p.join(temp.path, 'packages', name))
@@ -597,11 +595,15 @@ environment:
       expect(stdoutLines(unstaged), ['packages/ui']);
 
       final workdir = await runRipple(
-        ['list', '--changed', 'workdir:HEAD'],
+        [
+          'list',
+          '--changed',
+          '{checks: workdir:HEAD, exclude: ["**/*.md"]}',
+        ],
         workingDirectory: temp.path,
       );
       expect(workdir.exitCode, 0, reason: workdir.stderr as String);
-      // README.md is changedIgnore; only code paths map to packages.
+      // README.md matches exclude; only code paths map to packages.
       expect(stdoutLines(workdir), ['packages/core', 'packages/ui']);
     });
 
@@ -689,6 +691,102 @@ environment:
       );
       expect(union.exitCode, 0, reason: union.stderr as String);
       expect(stdoutLines(union), ['packages/core', 'packages/ui']);
+
+      final bracket = await runRipple(
+        ['list', '--changed', '[since:main, workdir:HEAD]'],
+        workingDirectory: temp.path,
+      );
+      expect(bracket.exitCode, 0, reason: bracket.stderr as String);
+      expect(stdoutLines(bracket), ['packages/core', 'packages/ui']);
+    });
+
+    test('--changed map include and exclude scope path ownership', () async {
+      final temp =
+          Directory.systemTemp.createTempSync('ripple_list_changed_globs_');
+      addTearDown(() {
+        if (temp.existsSync()) {
+          temp.deleteSync(recursive: true);
+        }
+      });
+
+      File(p.join(temp.path, 'ripple.yaml')).writeAsStringSync('''
+name: changed_globs
+packages:
+  include:
+    - packages/*
+''');
+      for (final name in ['core', 'ui']) {
+        final dir = Directory(p.join(temp.path, 'packages', name))
+          ..createSync(recursive: true);
+        File(p.join(dir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: $name
+environment:
+  sdk: ^3.5.0
+''');
+        File(p.join(dir.path, 'lib', 'x.dart'))
+          ..createSync(recursive: true)
+          ..writeAsStringSync('// $name\n');
+      }
+      File(p.join(temp.path, 'packages', 'core', 'README.md'))
+          .writeAsStringSync('# core\n');
+
+      Future<void> git(List<String> args) async {
+        final result = await Process.run(
+          'git',
+          args,
+          workingDirectory: temp.path,
+          runInShell: false,
+        );
+        expect(
+          result.exitCode,
+          0,
+          reason: 'git ${args.join(' ')}: ${result.stderr}',
+        );
+      }
+
+      await git(['init']);
+      await git(['config', 'user.email', 'test@test.com']);
+      await git(['config', 'user.name', 'test']);
+      await git(['add', '.']);
+      await git(['commit', '-m', 'initial']);
+
+      File(p.join(temp.path, 'packages', 'core', 'README.md'))
+          .writeAsStringSync('# edited\n');
+      File(p.join(temp.path, 'packages', 'ui', 'lib', 'x.dart'))
+          .writeAsStringSync('// ui code\n');
+
+      final included = await runRipple(
+        [
+          'list',
+          '--changed',
+          '{checks: workdir:HEAD, include: ["**/*.md"]}',
+        ],
+        workingDirectory: temp.path,
+      );
+      expect(included.exitCode, 0, reason: included.stderr as String);
+      expect(stdoutLines(included), ['packages/core']);
+
+      final excluded = await runRipple(
+        [
+          'list',
+          '--changed',
+          '{checks: workdir:HEAD, exclude: ["**/*.md"]}',
+        ],
+        workingDirectory: temp.path,
+      );
+      expect(excluded.exitCode, 0, reason: excluded.stderr as String);
+      expect(stdoutLines(excluded), ['packages/ui']);
+
+      final rejected = await runRipple(
+        [
+          'list',
+          '--changed',
+          '{checks: workdir:HEAD, extra: 1}',
+        ],
+        workingDirectory: temp.path,
+      );
+      expect(rejected.exitCode, 64);
+      expect(rejected.stderr, contains('unknown'));
     });
 
     test('--format paths matches default output', () async {

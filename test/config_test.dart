@@ -49,7 +49,6 @@ scripts:
         'e2e': ['packages/*/e2e'],
       });
       expect(config.packages.filtersPresets, isEmpty);
-      expect(config.packages.changedIgnore, isEmpty);
 
       final format = config.scripts['format.ci']!;
       expect(format.kind, ScriptKind.run);
@@ -1393,7 +1392,119 @@ scripts:
       );
     });
 
-    test('rejects map-form changed filter', () {
+    test('parseChangedCliValue accepts string, list, and map forms', () {
+      expect(
+        parseChangedCliValue('since:origin/main'),
+        const FilterChanged(['since:origin/main']),
+      );
+      expect(
+        parseChangedCliValue('[since:origin/main, workdir:HEAD]'),
+        const FilterChanged(['since:origin/main', 'workdir:HEAD']),
+      );
+      expect(
+        parseChangedCliValue(
+          '{checks: [since:origin/main, workdir:HEAD], include: ["**/*.md"], exclude: ["**/CHANGELOG.md"]}',
+        ),
+        const FilterChanged(
+          ['since:origin/main', 'workdir:HEAD'],
+          include: ['**/*.md'],
+          exclude: ['**/CHANGELOG.md'],
+        ),
+      );
+      expect(
+        () => parseChangedCliValue('{checks: since:origin/main, extra: 1}'),
+        throwsA(
+          isA<ChangedFilterParseException>().having(
+            (error) => error.message,
+            'message',
+            contains('unknown'),
+          ),
+        ),
+      );
+      expect(
+        () => parseChangedCliValue('{checks: ['),
+        throwsA(
+          isA<ChangedFilterParseException>().having(
+            (error) => error.message,
+            'message',
+            contains('invalid YAML'),
+          ),
+        ),
+      );
+    });
+
+    test('parses changed map with checks, include, and exclude', () {
+      final config = parseRippleYaml(
+        '''
+scripts:
+  docs:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          include:
+            - '**/*.md'
+            - docs/**
+          exclude:
+            - '**/CHANGELOG.md'
+  localDocs:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks:
+            - since:origin/main
+            - workdir:HEAD
+          include:
+            - '**/*.md'
+''',
+        rootPath: '/r',
+      );
+      expect(
+        config.scripts['docs']!.filters,
+        const FilterAnd([
+          FilterChanged(
+            ['since:origin/main'],
+            include: ['**/*.md', 'docs/**'],
+            exclude: ['**/CHANGELOG.md'],
+          ),
+        ]),
+      );
+      expect(
+        config.scripts['localDocs']!.filters,
+        const FilterAnd([
+          FilterChanged(
+            ['since:origin/main', 'workdir:HEAD'],
+            include: ['**/*.md'],
+          ),
+        ]),
+      );
+    });
+
+    test('rejects changed map without checks', () {
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          include:
+            - '**/*.md'
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('must include `checks`'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects unknown keys and empty path lists on changed maps', () {
       expect(
         () => parseRippleYaml(
           '''
@@ -1410,28 +1521,97 @@ scripts:
           isA<RippleConfigException>().having(
             (e) => e.message,
             'message',
-            contains('changed` must be a descriptor string'),
+            contains('unknown'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          include: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('include` list must not be empty'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: []
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('checks` list must not be empty'),
+          ),
+        ),
+      );
+      expect(
+        () => parseRippleYaml(
+          '''
+scripts:
+  bad:
+    exec: dart analyze .
+    filters:
+      - changed:
+          checks: since:origin/main
+          exclude:
+            - '['
+''',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            contains('Invalid `exclude` glob'),
           ),
         ),
       );
     });
 
-    test('parses packages.changedIgnore globs', () {
-      final config = parseRippleYaml(
-        '''
+    test('rejects unknown packages keys', () {
+      expect(
+        () => parseRippleYaml(
+          '''
 packages:
   include:
     - packages/*
-  changedIgnore:
-    - '**/*.md'
-    - '**/CHANGELOG.md'
+  mystery: true
 ''',
-        rootPath: '/r',
+          rootPath: '/r',
+        ),
+        throwsA(
+          isA<RippleConfigException>().having(
+            (e) => e.message,
+            'message',
+            allOf(
+              contains('Unknown packages key "mystery"'),
+              contains('filtersPresets'),
+            ),
+          ),
+        ),
       );
-      expect(config.packages.changedIgnore, [
-        '**/*.md',
-        '**/CHANGELOG.md',
-      ]);
     });
 
     test('parses workspace include entries', () {

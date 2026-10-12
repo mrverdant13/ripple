@@ -195,29 +195,33 @@ bool _isHeadOnlyRange(String range) {
 ///
 /// [rootPath] is the Ripple root (git working directory). [packages] is the
 /// discovered package list used for longest-prefix ownership mapping.
-/// [ignoreGlobs] drops matching repo-relative paths before ownership mapping
-/// (`packages.changedIgnore`).
+/// [includeGlobs] keeps a repo-relative path when it matches any glob.
+/// [excludeGlobs] drops a matching path. Include is applied first when both
+/// are set. Empty lists skip that step.
 Set<String> changedPackageRelativePaths({
   required String rootPath,
   required ChangedDescriptor descriptor,
   required List<RipplePackage> packages,
-  List<String> ignoreGlobs = const [],
+  List<String> includeGlobs = const [],
+  List<String> excludeGlobs = const [],
 }) {
   return changedPackageRelativePathsForDescriptors(
     rootPath: rootPath,
     descriptors: [descriptor],
     packages: packages,
-    ignoreGlobs: ignoreGlobs,
+    includeGlobs: includeGlobs,
+    excludeGlobs: excludeGlobs,
   );
 }
 
 /// Like [changedPackageRelativePaths], but unions path sets from every
-/// descriptor before longest-prefix ownership mapping.
+/// descriptor before the path filter and longest-prefix ownership mapping.
 Set<String> changedPackageRelativePathsForDescriptors({
   required String rootPath,
   required List<ChangedDescriptor> descriptors,
   required List<RipplePackage> packages,
-  List<String> ignoreGlobs = const [],
+  List<String> includeGlobs = const [],
+  List<String> excludeGlobs = const [],
 }) {
   final paths = <String>{
     for (final descriptor in descriptors)
@@ -227,7 +231,8 @@ Set<String> changedPackageRelativePathsForDescriptors({
     paths: paths,
     packages: packages,
     rootPath: rootPath,
-    ignoreGlobs: ignoreGlobs,
+    includeGlobs: includeGlobs,
+    excludeGlobs: excludeGlobs,
   );
 }
 
@@ -259,20 +264,25 @@ Set<String> _pathsForDescriptor({
 
 /// Maps changed repo-relative file paths to owning package [relativePath]s.
 ///
-/// Paths matching any [ignoreGlobs] pattern are dropped before ownership
-/// mapping.
+/// [includeGlobs] keeps a path when it matches any glob. [excludeGlobs] drops
+/// a path when it matches any glob. Include is applied first. An empty list
+/// skips that step. Surviving paths are mapped by longest-prefix ownership.
 Set<String> mapChangedPathsToPackages({
   required Iterable<String> paths,
   required List<RipplePackage> packages,
   required String rootPath,
-  List<String> ignoreGlobs = const [],
+  List<String> includeGlobs = const [],
+  List<String> excludeGlobs = const [],
 }) {
   if (packages.isEmpty) {
     return const {};
   }
   final normalizedRoot = p.normalize(rootPath);
-  final ignoreMatchers = [
-    for (final pattern in ignoreGlobs) _posixGlob(pattern),
+  final includeMatchers = [
+    for (final pattern in includeGlobs) _posixGlob(pattern),
+  ];
+  final excludeMatchers = [
+    for (final pattern in excludeGlobs) _posixGlob(pattern),
   ];
   final sorted = packages.toList()
     ..sort((a, b) {
@@ -291,7 +301,11 @@ Set<String> mapChangedPathsToPackages({
     if (relative == null) {
       continue;
     }
-    if (ignoreMatchers.any((glob) => glob.matches(relative))) {
+    if (includeMatchers.isNotEmpty &&
+        !includeMatchers.any((glob) => glob.matches(relative))) {
+      continue;
+    }
+    if (excludeMatchers.any((glob) => glob.matches(relative))) {
       continue;
     }
     for (final package in sorted) {

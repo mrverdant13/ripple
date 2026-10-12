@@ -131,7 +131,7 @@ optional (see [Shell quoting](#shell-quoting)).
 | `name` | no | Optional display name for the workspace. |
 | `replacements` | no | Named command aliases expanded from `{{key}}` placeholders. |
 | `replacementOverrides` | no | Filter-scoped overlays of `replacements` (first match wins). |
-| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`, `changedIgnore`). |
+| `packages` | no | Package discovery settings (`include`, `exclude`, `groups`, `filtersPresets`). |
 | `scripts` | no | Named scripts keyed by id (ids may contain dots, e.g. `format.ci`). |
 
 ### `packages`
@@ -145,8 +145,6 @@ packages:
   exclude:
     - '**/example/**'
     - '**/test/**'
-  changedIgnore:
-    - '**/*.md'
   groups:
     core:
       - packages/a
@@ -173,8 +171,6 @@ workspace root to a member) hard-fail every command that discovers packages.
   Patterns that match the Ripple root itself (e.g. `**`, `.`) select the root
   package when it has a `pubspec.yaml`.
 - **`exclude`** — glob patterns subtracted from include matches.
-- **`changedIgnore`** — repo-relative path globs ignored by `changed` filters
-  before path-to-package mapping (see [Filters](#filters)).
 - **`groups`** — named sets of path globs used when filtering by group.
 - **`filtersPresets`** — named filter expression fragments reusable via
   `preset:` nodes (in any filter AST) or CLI `--preset`. Each value is a
@@ -452,7 +448,7 @@ scripts:
 | `group` | string | Package must be in that `packages.groups` entry |
 | `match` | list of name globs | Package name matches any glob (OR) |
 | `noMatch` | list of name globs | Package name matches none (OR exclude) |
-| `changed` | descriptor string **or** list of strings | Package had path changes per git (see below); list = union |
+| `changed` | descriptor string, list of descriptors, or map | Package owns a git path change (see below). A list unions descriptors. A map sets `checks` plus optional `include` / `exclude` |
 | `sdk` | `dart` or `flutter` | Pubspec `environment.flutter` absent / present |
 | `pubGet` | `missing` or `resolved` | Resolution metadata missing/stale vs up to date |
 | `asOf` | `start` or `live` (optional; default `live`) | Only valid with `pubGet`: snapshot at command start vs live filesystem check |
@@ -480,15 +476,30 @@ skip siblings once the shared root is resolved.
 There is no built-in `analyze` command. Prefer a script such as
 `{{dart}} analyze --no-pub` when packages are already resolved.
 
-`changed` accepts a **string** or a **non-empty list** of descriptor strings.
-A list (and repeatable CLI `--changed`) is a **union** of path sets, then
-longest-prefix mapped to packages. Combining with `or:` remains valid:
+`changed` accepts a descriptor **string**, a **non-empty list** of descriptor
+strings, or a **map**. A string is one descriptor. A list unions those
+descriptors. A map requires `checks` (a descriptor string or a non-empty list)
+and may set `include` and `exclude`. Repeated CLI `--changed` values are a
+union of those leaves. Combining with `or:` remains valid:
 
 ```yaml
 filters:
   - changed:
       - since:origin/main
       - workdir:HEAD
+```
+
+```yaml
+filters:
+  - changed:
+      checks:
+        - since:origin/main
+        - workdir:HEAD
+      include:
+        - '**/*.md'
+        - docs/**
+      exclude:
+        - '**/CHANGELOG.md'
 ```
 
 | Descriptor | Meaning |
@@ -504,16 +515,26 @@ filters:
 `workdir:HEAD` remains the union of tracked dirty + untracked. `staged`,
 `unstaged`, and `untracked` are opt-in splits of that surface.
 
-Optional `packages.changedIgnore` is a list of repo-relative path globs. Matching
-changed files are dropped **before** path-to-package mapping (for example
-`['**/*.md']` so README-only edits do not select a package):
+`include` and `exclude` are repo-relative path globs applied **before**
+longest-prefix ownership. `include` keeps a path when it matches any glob.
+`exclude` drops a path when it matches any glob. With both, a path must match
+`include` and miss `exclude`. With neither, every changed path counts.
 
 ```yaml
-packages:
-  include:
-    - packages/*
-  changedIgnore:
-    - '**/*.md'
+filters:
+  - changed:
+      checks: since:origin/main
+      exclude:
+        - '**/*.md'
+```
+
+On the CLI, quote a YAML list or map. Put double quotes around globs inside the
+map, and single quotes around the whole value:
+
+```bash
+ripple list --changed since:origin/main
+ripple list --changed '[since:origin/main, workdir:HEAD]'
+ripple list --changed '{checks: [since:origin/main, workdir:HEAD], include: ["**/*.md", "docs/**"]}'
 ```
 
 Ripple maps changed repo paths to packages using longest-prefix ownership
@@ -614,6 +635,8 @@ ripple list --pub-get live-missing
 ripple list --changed since:origin/main
 ripple list --changed workdir:HEAD
 ripple list --changed since:origin/main --changed workdir:HEAD
+ripple list --changed '[since:origin/main, workdir:HEAD]'
+ripple list --changed '{checks: since:origin/main, exclude: ["**/*.md"]}'
 ripple list --match core --dependents
 ripple list --match app --dependencies
 ripple list --changed since:origin/main --dependents
@@ -633,7 +656,7 @@ ripple list --changed since:origin/main --dependents
 | `--preset <name>` | AND a named `packages.filtersPresets` expression into the seed filters (repeatable). |
 | `--sdk <dart\|flutter>` | Only packages whose pubspec `environment` matches (`flutter` = `environment.flutter` set). Pass at most once. |
 | `--pub-get <value>` | Only packages whose pub get status matches: `start-missing`, `start-resolved`, `live-missing`, or `live-resolved`. |
-| `--changed <descriptor>` | Only packages with git path changes (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`). Repeatable; values are a union. |
+| `--changed <value>` | Only packages that own a git path change. A value is a descriptor (`since:`, `range:`, `workdir:`, or bare `since-latest-tag` / `staged` / `unstaged` / `untracked`), a YAML list of descriptors, or a YAML map with `checks` and optional `include` / `exclude`. Repeatable; values are a union. Quote the value so the shell does not expand globs or braces. |
 | `--dependents` | Union transitive workspace dependents of the seeds (exhaustive reverse closure). |
 | `--dependencies` | Union transitive workspace dependencies of the seeds (exhaustive forward closure). |
 

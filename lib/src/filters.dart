@@ -86,7 +86,8 @@ class PackageFilterCriteria {
   /// [FilterMatch] leaf (OR within the list). Multiple [groups] become
   /// separate [FilterGroup] leaves AND'd together. Each name in [presets]
   /// becomes a [FilterPreset] leaf (AND'd with the rest); unknown names are
-  /// rejected when [filterPackages] resolves presets.
+  /// rejected when [filterPackages] resolves presets. One [changed] leaf is
+  /// used as-is. Several [changed] leaves become a [FilterOr] (union).
   factory PackageFilterCriteria.fromNameGlobs({
     List<String> match = const [],
     List<String> noMatch = const [],
@@ -97,7 +98,7 @@ class PackageFilterCriteria {
     List<String> dependsOn = const [],
     List<String> groups = const [],
     List<String> presets = const [],
-    List<String> changed = const [],
+    List<FilterChanged> changed = const [],
     String? sdk,
     FilterPubGet? pubGet,
     List<String>? packageNames,
@@ -112,7 +113,8 @@ class PackageFilterCriteria {
       if (match.isNotEmpty) FilterMatch(match),
       if (noMatch.isNotEmpty) FilterNoMatch(noMatch),
       for (final preset in presets) FilterPreset(preset),
-      if (changed.isNotEmpty) FilterChanged(changed),
+      if (changed.length == 1) changed.single,
+      if (changed.length > 1) FilterOr(List<FilterExpr>.unmodifiable(changed)),
       if (sdk != null) FilterSdk(sdk),
       if (pubGet != null) pubGet,
     ];
@@ -503,7 +505,6 @@ List<RipplePackage> filterPackages(
   final changedContext = _ChangedFilterMatchContext(
     rootPath: config.rootPath,
     mappingPackages: packagesForChangedMapping ?? packages,
-    ignoreGlobs: config.packages.changedIgnore,
   );
 
   final filtered = <RipplePackage>[];
@@ -554,16 +555,18 @@ final class _ChangedFilterMatchContext {
   _ChangedFilterMatchContext({
     required this.rootPath,
     required this.mappingPackages,
-    this.ignoreGlobs = const [],
   });
 
   final String rootPath;
   final List<RipplePackage> mappingPackages;
-  final List<String> ignoreGlobs;
   final Map<String, Set<String>> _cache = {};
 
   Set<String> changedOwners(FilterChanged filter) {
-    final cacheKey = filter.descriptors.join('\u0000');
+    final cacheKey = [
+      filter.descriptors.join('\u0001'),
+      filter.include.join('\u0001'),
+      filter.exclude.join('\u0001'),
+    ].join('\u0000');
     return _cache.putIfAbsent(cacheKey, () {
       final parsed = [
         for (final raw in filter.descriptors) parseChangedDescriptor(raw),
@@ -572,7 +575,8 @@ final class _ChangedFilterMatchContext {
         rootPath: rootPath,
         descriptors: parsed,
         packages: mappingPackages,
-        ignoreGlobs: ignoreGlobs,
+        includeGlobs: filter.include,
+        excludeGlobs: filter.exclude,
       );
     });
   }
