@@ -519,7 +519,6 @@ filters:
 longest-prefix ownership. `include` keeps a path when it matches any glob.
 `exclude` drops a path when it matches any glob. With both, a path must match
 `include` and miss `exclude`. With neither, every changed path counts.
-`packages.changedIgnore` is rejected; put those globs on the `changed` leaf.
 
 ```yaml
 filters:

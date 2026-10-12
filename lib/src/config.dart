@@ -737,6 +737,8 @@ final class PackageIncludeWorkspace extends PackageIncludeEntry {
   int get hashCode => path.hashCode;
 }
 
+const _packageKeys = {'include', 'exclude', 'groups', 'filtersPresets'};
+
 /// Package discovery settings under `packages:`.
 class RipplePackages {
   /// Creates package include/exclude/group/preset settings.
@@ -1366,14 +1368,17 @@ RipplePackages _packagesFromValue(
     );
   }
   final Map<dynamic, dynamic> map = value;
-  if (map.containsKey('changedIgnore')) {
-    throw CheckedFromJsonException(
-      map,
-      'changedIgnore',
-      'RipplePackages',
-      '`packages.changedIgnore` has been removed. Use `include` and `exclude` '
-          'on a `changed` filter',
-    );
+  for (final key in map.keys) {
+    if (key is! String || !_packageKeys.contains(key)) {
+      final label = key?.toString() ?? '';
+      throw CheckedFromJsonException(
+        map,
+        label,
+        'RipplePackages',
+        'Unknown packages key "$label". '
+            'Expected include, exclude, groups, or filtersPresets',
+      );
+    }
   }
   return RipplePackages(
     include: _includeEntriesFromValue(map['include'], map),

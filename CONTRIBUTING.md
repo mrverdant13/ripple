@@ -183,7 +183,6 @@ Prioritize coverage for:
   list of descriptors, or a map with `checks` plus optional `include` /
   `exclude` (repo-relative path globs applied before package ownership).
   CLI `--changed` accepts the same three forms; repeated values union.
-  `packages.changedIgnore` is rejected
 - Dart workspace detection (`workspace:` include entries, nested members,
   intermediate-standalone hard-fail, workspace-aware `pubGet`)
 - Graph expansion on `exec:` scripts (`dependentsFilters` /

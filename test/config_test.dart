@@ -1590,15 +1590,14 @@ scripts:
       );
     });
 
-    test('rejects packages.changedIgnore', () {
+    test('rejects unknown packages keys', () {
       expect(
         () => parseRippleYaml(
           '''
 packages:
   include:
     - packages/*
-  changedIgnore:
-    - '**/*.md'
+  mystery: true
 ''',
           rootPath: '/r',
         ),
@@ -1607,9 +1606,8 @@ packages:
             (e) => e.message,
             'message',
             allOf(
-              contains('changedIgnore'),
-              contains('include'),
-              contains('exclude'),
+              contains('Unknown packages key "mystery"'),
+              contains('filtersPresets'),
             ),
           ),
         ),
