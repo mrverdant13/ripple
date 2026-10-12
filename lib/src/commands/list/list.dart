@@ -4,7 +4,6 @@ import 'package:ripple_cli/src/commands/commands.dart';
 import 'package:ripple_cli/src/config.dart';
 import 'package:ripple_cli/src/discovery.dart';
 import 'package:ripple_cli/src/filters.dart';
-import 'package:ripple_cli/src/git_diff.dart';
 import 'package:ripple_cli/src/graph.dart';
 import 'package:ripple_cli/src/list_format.dart';
 
@@ -81,11 +80,13 @@ class ListCommand extends RippleCommand {
       )
       ..addMultiOption(
         changedOptionName,
-        help: 'Only packages changed per a git descriptor: since:<ref>, '
-            'range:<A..B>, workdir:<tree-ish>, or bare since-latest-tag / '
-            'staged / unstaged / untracked. May be passed multiple times '
-            '(union of path sets).',
-        valueHelp: 'descriptor',
+        help: 'Only packages that own a git change. Value is a descriptor '
+            '(since:<ref>, range:<A..B>, workdir:<tree-ish>, or bare '
+            'since-latest-tag / staged / unstaged / untracked), a YAML list '
+            'of descriptors, or a YAML map with checks and optional include / '
+            'exclude. Repeat to union. A value may contain commas.',
+        splitCommas: false,
+        valueHelp: 'value',
       )
       ..addOption(
         sdkOptionName,
@@ -177,16 +178,13 @@ class ListCommand extends RippleCommand {
     final packages = discoverPackages(config);
     final group = argResults!.option(groupOptionName);
     final format = argResults!.option(formatOptionName) ?? listFormatPaths;
-    final changed = <String>[];
-    for (final raw in argResults!.multiOption(changedOptionName)) {
-      final trimmed = raw.trim();
-      if (trimmed.isEmpty) {
-        usageException(
-          'Invalid --$changedOptionName: value must be a non-empty descriptor',
-        );
-      }
-      parseChangedDescriptor(trimmed);
-      changed.add(trimmed);
+    final List<FilterChanged> changed;
+    try {
+      changed = parseChangedCliValues(
+        argResults!.multiOption(changedOptionName),
+      );
+    } on ChangedFilterParseException catch (error) {
+      usageException('Invalid --$changedOptionName: ${error.message}');
     }
 
     final pubGetRaw = argResults!.option(pubGetOptionName);

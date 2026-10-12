@@ -1393,6 +1393,47 @@ scripts:
       );
     });
 
+    test('parseChangedCliValue accepts string, list, and map forms', () {
+      expect(
+        parseChangedCliValue('since:origin/main'),
+        const FilterChanged(['since:origin/main']),
+      );
+      expect(
+        parseChangedCliValue('[since:origin/main, workdir:HEAD]'),
+        const FilterChanged(['since:origin/main', 'workdir:HEAD']),
+      );
+      expect(
+        parseChangedCliValue(
+          '{checks: [since:origin/main, workdir:HEAD], include: ["**/*.md"], exclude: ["**/CHANGELOG.md"]}',
+        ),
+        const FilterChanged(
+          ['since:origin/main', 'workdir:HEAD'],
+          include: ['**/*.md'],
+          exclude: ['**/CHANGELOG.md'],
+        ),
+      );
+      expect(
+        () => parseChangedCliValue('{checks: since:origin/main, extra: 1}'),
+        throwsA(
+          isA<ChangedFilterParseException>().having(
+            (error) => error.message,
+            'message',
+            contains('unknown'),
+          ),
+        ),
+      );
+      expect(
+        () => parseChangedCliValue('{checks: ['),
+        throwsA(
+          isA<ChangedFilterParseException>().having(
+            (error) => error.message,
+            'message',
+            contains('invalid YAML'),
+          ),
+        ),
+      );
+    });
+
     test('parses changed map with checks, include, and exclude', () {
       final config = parseRippleYaml(
         '''

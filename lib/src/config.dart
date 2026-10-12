@@ -7,6 +7,7 @@ import 'package:checked_yaml/checked_yaml.dart';
 import 'package:glob/glob.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import 'git_diff.dart';
 
@@ -393,6 +394,42 @@ List<String> _changedGlobList(Object? value, String field) {
     globs.add(pattern);
   }
   return List<String>.unmodifiable(globs);
+}
+
+/// Parses one `--changed` value into a [FilterChanged] leaf.
+///
+/// A plain descriptor string is a one-descriptor leaf. A value that starts
+/// with `[` is a YAML list of descriptors. A value that starts with `{` is a
+/// YAML map with `checks` and optional `include` / `exclude`.
+///
+/// Throws [ChangedFilterParseException] for a bad shape, invalid YAML, an
+/// unknown map key, or an invalid descriptor.
+FilterChanged parseChangedCliValue(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) {
+    throw const ChangedFilterParseException(
+      'value must be a non-empty descriptor, YAML list, or YAML map',
+    );
+  }
+  try {
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      final Object? decoded;
+      try {
+        decoded = loadYaml(trimmed);
+      } on YamlException catch (error) {
+        throw ChangedFilterParseException('invalid YAML (${error.message})');
+      }
+      return parseChangedFilterValue(decoded);
+    }
+    return parseChangedFilterValue(trimmed);
+  } on RippleConfigException catch (error) {
+    throw ChangedFilterParseException(error.message);
+  }
+}
+
+/// Parses every `--changed` value. Each entry is one leaf.
+List<FilterChanged> parseChangedCliValues(Iterable<String> values) {
+  return [for (final value in values) parseChangedCliValue(value)];
 }
 
 /// Allowed YAML / CLI `sdk` filter values (`dart` or `flutter`).

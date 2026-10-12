@@ -464,6 +464,19 @@ void main() {
       expect(stdoutLines(result), ['core']);
     });
 
+    test('run: script rejects --changed', () async {
+      final result = await runRipple([
+        'run',
+        'root.pwd',
+        '--changed',
+        'since:origin/main',
+      ]);
+
+      expect(result.exitCode, 64);
+      expect(result.stderr, contains('does not accept package filters'));
+      expect(result.stderr, contains('--changed'));
+    });
+
     test('run: script rejects --preset', () async {
       final result = await runRipple([
         'run',
